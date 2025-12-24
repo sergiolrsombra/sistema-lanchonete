@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
-// --- ÍCONES UNIVERSAIS (Compatíveis com qualquer versão do Vercel) ---
-// Trocamos ícones novos por versões clássicas para evitar erros de build
+// --- ÍCONES (Versão Universal) ---
 import { 
   Utensils, ShoppingCart, Send, User, ChevronLeft, Minus, Plus, 
   CheckCircle, Search, ChefHat, UserCircle2, LayoutDashboard, 
@@ -30,7 +29,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = 'lanchonete-joseane-sombra';
 
-// --- FUNÇÃO DE IMPRESSÃO TÉRMICA ---
+// --- FUNÇÃO DE IMPRESSÃO ---
 const printOrder = (order) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) { alert("Por favor, permita popups para imprimir."); return; }
@@ -542,12 +541,37 @@ export default function App() {
   const [mobileRole, setMobileRole] = useState('');
   const [showClientModal, setShowClientModal] = useState(false);
   const [clientName, setClientName] = useState('');
-  
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
-    return onAuthStateChanged(auth, u => {
-        if(u) setFirebaseUser({ ...u, uid: 'loja-joseane-sombra-oficial' });
+    // 1. TENTA LOGAR NO FIREBASE
+    signInAnonymously(auth).catch((error) => {
+        console.error("Erro no login Firebase:", error);
     });
+
+    // 2. MONITORA O ESTADO
+    const unsubscribe = onAuthStateChanged(auth, u => {
+        if(u) {
+            setFirebaseUser({ ...u, uid: 'loja-joseane-sombra-oficial' });
+        }
+    });
+
+    // 3. CHAVE MESTRA: SE DEMORAR 3 SEGUNDOS, ENTRA MESMO ASSIM
+    const safetyTimer = setTimeout(() => {
+        setFirebaseUser((current) => {
+            if (!current) {
+                console.log("Ativando modo de segurança (Offline/Guest)...");
+                return { uid: 'loja-joseane-sombra-oficial', isAnonymous: true };
+            }
+            return current;
+        });
+    }, 2000); // 2 segundos de espera máxima
+
+    return () => {
+        unsubscribe();
+        clearTimeout(safetyTimer);
+    };
   }, []);
 
   const handleClientLogin = () => {
@@ -557,6 +581,7 @@ export default function App() {
       setShowClientModal(false);
   }
 
+  // Se ainda estiver nulo (só nos primeiros 2s), mostra loading
   if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white"><Loader2 className="animate-spin mr-2"/> Carregando...</div>;
 
   return (
