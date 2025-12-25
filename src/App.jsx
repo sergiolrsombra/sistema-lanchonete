@@ -16,7 +16,14 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, deleteDoc, setDoc, getDoc, Timestamp, writeBatch } from "firebase/firestore";
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
-const firebaseConfig = JSON.parse(__firebase_config);
+const manualConfig = {
+  apiKey: "AIzaSyBlgCjSDNNGJPhsK-3vlJA1-5nNIxPzmg0",
+  authDomain: "lanchonete-6b915.firebaseapp.com",
+  projectId: "lanchonete-6b915",
+  storageBucket: "lanchonete-6b915.firebasestorage.app",
+  messagingSenderId: "894517269506",
+  appId: "1:894517269506:web:3c25cf6a65cb4d4687831b"
+};
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
