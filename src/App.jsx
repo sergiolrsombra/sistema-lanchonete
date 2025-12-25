@@ -23,7 +23,7 @@ import { initializeApp } from "firebase/app" ;
 
 // Configuração do Firebase do seu aplicativo web
 const firebaseConfig = { 
-  apiKey : "AIzaSyBlgCjSDNNGJPhsK-3vlJA1-5nNIxPzmg0" , 
+  apiKey : "AIzaSyAzaNVsJsB4vFMNW1WG1MQbdQDYoDnmduA" , 
   authDomain: "lanchonete-6b915.firebaseapp.com",
   projectId: "lanchonete-6b915",
   bucket de armazenamento : "lanchonete-6b915.firebasestorage.app" , 
