@@ -16,23 +16,17 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, deleteDoc, setDoc, getDoc, Timestamp, writeBatch } from "firebase/firestore";
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
-// Importe as funções necessárias dos SDKs que você precisa
-import { initializeApp } from "firebase/app" ;   
-// TODO: Adicionar SDKs para produtos do Firebase que você deseja usar
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Configuração do Firebase do seu aplicativo web
-const firebaseConfig = { 
-  apiKey : "AIzaSyAzaNVsJsB4vFMNW1WG1MQbdQDYoDnmduA" , 
+const firebaseConfig = {
+  apiKey: "AIzaSyAzaNVsJsB4vFMNW1WG1MQbdQDYoDnmduA",
   authDomain: "lanchonete-6b915.firebaseapp.com",
   projectId: "lanchonete-6b915",
-  bucket de armazenamento : "lanchonete-6b915.firebasestorage.app" , 
-  messagingSenderId : " 894517269506" 
-  appId : "1:894517269506:web:3c25cf6a65cb4d4687831b" 
+  storageBucket: "lanchonete-6b915.firebasestorage.app",
+  messagingSenderId: "894517269506",
+  appId: "1:894517269506:web:3c25cf6a65cb4d4687831b"
 };
 
 // Inicializar o Firebase
-const app = initializeApp ( firebaseConfig );
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'lanchonete-joseane-sombra';
