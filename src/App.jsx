@@ -25,7 +25,7 @@ const firebaseConfig = {
   appId: "1:894517269506:web:3c25cf6a65cb4d4687831b"
 };
 
-const app = initializeApp(manualConfig);
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'lanchonete-joseane-sombra';
