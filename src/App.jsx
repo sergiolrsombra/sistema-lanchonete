@@ -192,7 +192,6 @@ const printOrder = (order, settings) => {
       <body>
         <div class="header">
           <h2>${storeName}</h2>
-          <p>Joseane Sombra</p>
           <p>Comprovante de Encomenda</p>
           ${storePhone ? `<p>Tel: ${storePhone}</p>` : ''}
           ${docId ? `<p>${docType || 'Doc'}: ${docId}</p>` : ''}
