@@ -1310,7 +1310,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="absolute bottom-6 text-slate-500 text-xs">Sistema Integrado v4.6 • Full Features</div>
+          <div className="absolute bottom-6 text-slate-500 text-xs">Sistema Integrado v1.0 • Full Features</div>
         </div>
   );
 }
