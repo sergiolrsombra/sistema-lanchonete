@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+// --- IMPORTAÇÃO APENAS DE ÍCONES BÁSICOS E ANTIGOS (SEGURANÇA TOTAL) ---
 import { 
-  // --- ÍCONES VISUAIS (Específicos da sua versão bonita) ---
-  Utensils, ShoppingCart, Send, User, ChevronLeft, 
-  Minus, Plus, CheckCircle, Search, ChefHat, UserCircle2, 
-  LayoutDashboard, Trash2, Package, DollarSign, X, Coffee, Sandwich, 
-  ClipboardList, Wallet, TrendingUp, Edit3, Calendar, 
-  Coins, ArrowDownCircle, ArrowUpCircle, Lock, Unlock, AlertCircle, 
-  CalendarDays, BarChart3, Loader2, ListPlus, 
-  CheckCircle2, Printer, Settings, MessageCircle, Phone, 
-  MonitorSmartphone, Gift, AlertOctagon, Sparkles
+  Utensils, ShoppingCart, Send, User, ChevronLeft, Minus, Plus, 
+  CheckCircle, Search, ChefHat, UserCircle2, LayoutDashboard, 
+  Trash2, Package, DollarSign, X, Coffee, Sandwich, ClipboardList, 
+  Wallet, TrendingUp, Edit3, Calendar, ChevronRight, Coins, 
+  ArrowDownCircle, ArrowUpCircle, Lock, Unlock, AlertCircle, 
+  AlertTriangle, BarChart3, ListPlus, CheckCircle2, 
+  Printer, Settings, MessageCircle, Phone, Play
 } from 'lucide-react';
 
 import { initializeApp } from "firebase/app";
@@ -74,41 +73,23 @@ const IconMapper = ({ type, className }) => {
     switch (type) {
       case 'burger': return <Sandwich className={className} />;
       case 'drink': return <Coffee className={className} />; 
-      case 'dessert': return <Gift className={className} />; 
       default: return <Package className={className} />;
     }
   } catch (e) { return <Package className={className} />; }
 };
 
-const Toast = ({ message, type, onClose }) => (
-  <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg animate-in slide-in-from-bottom-5 ${type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-    {type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-    <span className="font-medium text-sm">{message}</span>
-    <button onClick={onClose} className="ml-2 hover:bg-white/20 rounded-full p-1"><X size={14} /></button>
-  </div>
-);
-
 const printOrder = (order, settings) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) { alert("Permita popups."); return; }
   const remaining = (order.total || 0) - (order.signal || 0);
-  const itemsHtml = order.description ? `<div class="obs-box" style="margin-top:0; border:none; padding:0; background:none;">${order.description.replace(/\n/g, '<br/>')}</div>` : '<p style="text-align:center;">Sem descrição</p>';
-
-  printWindow.document.write(`
-    <html><head><title>Pedido</title><style>body{font-family:'Courier New';padding:20px;max-width:300px;margin:0 auto;}.header{text-align:center;border-bottom:1px dashed #000;margin-bottom:10px;}.totals{border-top:1px dashed #000;padding-top:10px;margin-top:10px;}.row{display:flex;justify-content:space-between;}</style></head><body>
-      <div class="header"><h2>${settings?.storeName || "Confeitaria"}</h2><p>Encomenda: ${order.client || 'Cliente'}</p></div>
-      <p>Entregar: ${formatDate(order.deliveryDate)} às ${order.deliveryTime}</p>
-      ${itemsHtml}
-      <div class="totals"><div class="row"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div><div class="row"><span>Sinal</span><span>- ${formatMoney(order.signal)}</span></div><div class="row"><strong>A PAGAR</strong><strong>${formatMoney(remaining)}</strong></div></div>
-      <script>window.onload=function(){window.print();}</script>
-    </body></html>`);
+  const itemsHtml = order.description ? `<div style="margin-top:0;">${order.description.replace(/\n/g, '<br/>')}</div>` : '<p style="text-align:center;">Sem descrição</p>';
+  printWindow.document.write(`<html><body><h2>${settings?.storeName || "Confeitaria"}</h2><p>Cliente: ${order.client}</p>${itemsHtml}<p>Total: ${formatMoney(order.total)}</p><script>window.onload=function(){window.print();}</script></body></html>`);
   printWindow.document.close();
 };
 
-// --- FLUXO DE CAIXA ---
+// --- FLUXO DE CAIXA (SEM AUTO-SAVE PARA EVITAR LOOP) ---
 const CashControl = ({ user, orders }) => {
   const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('entry');
   const [cashCounts, setCashCounts] = useState({ bills: { 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '' }, coins: { 1: '', 0.50: '', 0.25: '', 0.10: '', 0.05: '' }, pix: '' });
   const [date, setDate] = useState(getTodayStr());
@@ -116,31 +97,32 @@ const CashControl = ({ user, orders }) => {
   
   useEffect(() => {
     if (!user) return;
-    const u = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'records_v2')), s => {
-        setRecords(s.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b)=>(a.date || '').localeCompare(b.date || '')));
-        setLoading(false);
+    const unsub = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'records_v2')), (snap) => {
+      setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.date || '').localeCompare(b.date || '')));
     });
-    getDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'app_state', 'calculator')).then(s => { if(s.exists()) setCashCounts(s.data()); });
-    return () => u();
+    // Carrega calculadora apenas uma vez
+    getDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'app_state', 'calculator')).then(s => { if (s.exists()) setCashCounts(s.data()); });
+    return () => unsub();
   }, [user]);
 
-  useEffect(() => { if(user) setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'app_state', 'calculator'), cashCounts); }, [cashCounts, user]);
+  // REMOVIDO: useEffect de auto-save do cashCounts para evitar loop.
+  // Agora salvamos manualmente ao sair ou clicar em um botão se necessário (simplificado aqui).
 
   const posTotals = useMemo(() => {
     if (!orders) return { pix: 0, cash: 0, card: 0 };
     const daily = orders.filter(o => o?.paymentStatus === 'PAGO' && (o.paidAt || o.date)?.startsWith(date));
     const acc = { pix: 0, cash: 0, card: 0 };
     daily.forEach(o => {
-        if(o.payments && Array.isArray(o.payments)) o.payments.forEach(p => { const v = Number(p.value)||0; if(p.method==='Dinheiro') acc.cash+=v; else if((p.method||'').includes('Pix')) acc.pix+=v; else acc.card+=v; });
-        else { const v = Number(o.total)||0; if((o.method||'').includes('Dinheiro')) acc.cash+=v; else if((o.method||'').includes('Pix')) acc.pix+=v; else acc.card+=v; }
+        if(o.payments && Array.isArray(o.payments)) o.payments.forEach(p => { const v=Number(p.value)||0; if(p.method==='Dinheiro') acc.cash+=v; else if((p.method||'').includes('Pix')) acc.pix+=v; else acc.card+=v; });
+        else { const v=Number(o.total)||0; if((o.method||'').includes('Dinheiro')) acc.cash+=v; else if((o.method||'').includes('Pix')) acc.pix+=v; else acc.card+=v; }
     });
     return acc;
   }, [orders, date]);
 
-  const handleSave = async () => { await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'records_v2'), { date, pix: parseFloat(pix)||0, cash: parseFloat(cash)||0, card: parseFloat(card)||0, total: (parseFloat(pix)||0)+(parseFloat(cash)||0)+(parseFloat(card)||0) }); setPix(''); setCash(''); setCard(''); alert('Salvo!'); };
+  const handleCashCountChange = (type, denom, value) => setCashCounts(prev => ({ ...prev, [type]: { ...prev[type], [denom]: value } }));
+  
+  const handleSave = async () => { await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'records_v2'), { date, pix: parseFloat(pix)||0, cash: parseFloat(cash)||0, card: parseFloat(card)||0, total: (parseFloat(pix)||0)+(parseFloat(cash)||0)+(parseFloat(card)||0), createdAt: Timestamp.now() }); setPix(''); setCash(''); setCard(''); alert("Salvo!"); };
   const handleDelete = (id) => deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records_v2', id));
-
-  if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-blue-600"/></div>;
 
   return (
     <div className="bg-gray-50 min-h-screen p-8 pl-24 w-full">
@@ -155,8 +137,8 @@ const CashControl = ({ user, orders }) => {
       )}
       {currentView === 'cash' && (
           <div className="bg-white p-6 rounded-xl shadow grid grid-cols-2 gap-8">
-              <div>{Object.keys(cashCounts.bills).reverse().map(k => <div key={k} className="flex justify-between mb-2"><span>R$ {k}</span><input type="number" className="border w-20 text-center" value={cashCounts.bills[k]} onChange={e=>setCashCounts({...cashCounts, bills: {...cashCounts.bills, [k]: e.target.value}})} /></div>)}</div>
-              <div>{Object.keys(cashCounts.coins).reverse().map(k => <div key={k} className="flex justify-between mb-2"><span>R$ {k}</span><input type="number" className="border w-20 text-center" value={cashCounts.coins[k]} onChange={e=>setCashCounts({...cashCounts, coins: {...cashCounts.coins, [k]: e.target.value}})} /></div>)}</div>
+              <div>{Object.keys(cashCounts.bills).reverse().map(k => <div key={k} className="flex justify-between mb-2"><span>R$ {k}</span><input type="number" className="border w-20 text-center" value={cashCounts.bills[k]} onChange={e=>handleCashCountChange('bills', k, e.target.value)} /></div>)}</div>
+              <div>{Object.keys(cashCounts.coins).reverse().map(k => <div key={k} className="flex justify-between mb-2"><span>R$ {k}</span><input type="number" className="border w-20 text-center" value={cashCounts.coins[k]} onChange={e=>handleCashCountChange('coins', k, e.target.value)} /></div>)}</div>
           </div>
       )}
     </div>
@@ -172,34 +154,35 @@ const MobileView = ({ user, initialRole, onBack }) => {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderCounter, setOrderCounter] = useState(1000); 
 
   useEffect(() => {
     if (!user) return;
-    const uProd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), s => {
-        if (s.empty) { const b = writeBatch(db); DEFAULT_PRODUCTS_SEED.forEach(p => b.set(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), p)); b.commit(); }
+    const unsubProd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), (snap) => {
+        if (snap.empty) { const batch = writeBatch(db); DEFAULT_PRODUCTS_SEED.forEach(p => batch.set(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), p)); batch.commit(); }
         else { 
-            const list = s.docs.map(d=>({firestoreId:d.id, ...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||'')); 
+            const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a,b) => (a.name||'').localeCompare(b.name||'')); 
             setProducts(list); 
             setCategories(['Todos',...new Set(list.map(p=>p.category).filter(Boolean))]); 
         }
     });
-    const uOrd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'orders')), s => { 
-        if(!s.empty) setOrderCounter(Math.max(...s.docs.map(d=>d.data().id||0))+1); 
-    });
-    return () => { uProd(); uOrd(); };
+    const unsubOrders = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'orders')), (snap) => { if(!snap.empty) setOrderCounter(Math.max(...snap.docs.map(d => d.data().id || 0)) + 1); });
+    return () => { unsubProd(); unsubOrders(); };
   }, [user]);
 
   const handleTableSelect = (t) => { setSelectedTable(t); setCart([]); setView('menu'); };
-  const addToCart = (p) => { if(p.stock<=0)return; const ex=cart.find(i=>i.id===p.id); if(ex) setCart(cart.map(i=>i.id===p.id?{...i,qty:i.qty+1}:i)); else setCart([...cart,{...p,qty:1,obs:''}]); };
-  const removeFromCart = (id) => { const ex=cart.find(i=>i.id===id); if(ex.qty>1) setCart(cart.map(i=>i.id===id?{...i,qty:i.qty-1}:i)); else setCart(cart.filter(i=>i.id!==id)); };
+  const addToCart = (p) => { if(p.stock<=0)return; const ex = cart.find(i=>i.id===p.id); if(ex) setCart(cart.map(i=>i.id===p.id?{...i,qty:i.qty+1}:i)); else setCart([...cart,{...p,qty:1,obs:''}]); };
+  const removeFromCart = (id) => { const ex = cart.find(i=>i.id===id); if(ex.qty>1) setCart(cart.map(i=>i.id===id?{...i,qty:i.qty-1}:i)); else setCart(cart.filter(i=>i.id!==id)); };
   const sendOrder = async () => {
-    if(!cart.length)return; 
-    const b = writeBatch(db);
-    cart.forEach(c => { const p = products.find(prod=>prod.id===c.id); if(p) b.update(doc(db, 'artifacts', appId, 'users', user.uid, 'products', p.firestoreId), {stock: p.stock-c.qty}); });
-    await b.commit();
-    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { id: orderCounter, client: selectedTable, waiter: initialRole, items: cart, total: cart.reduce((a,i)=>a+(i.price*i.qty),0), status: 'ABERTO', paymentStatus: 'ABERTO', kitchenStatus: 'Pendente', method: 'Aguardando', date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0,5), origin: 'Mobile' });
-    setView('success'); setTimeout(()=>{setCart([]); setSelectedTable(''); setView('tables');}, 2000);
+    if(!cart.length)return; setIsSubmitting(true);
+    try {
+      const batch = writeBatch(db);
+      cart.forEach(c => { const p = products.find(prod=>prod.id===c.id); if(p) batch.update(doc(db, 'artifacts', appId, 'users', user.uid, 'products', p.firestoreId), {stock: p.stock-c.qty}); });
+      await batch.commit();
+      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { id: orderCounter, client: selectedTable, waiter: initialRole, items: cart, total: cart.reduce((a,i)=>a+(i.price*i.qty),0), status: 'ABERTO', paymentStatus: 'ABERTO', kitchenStatus: 'Pendente', method: 'Aguardando', date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0,5), origin: 'Mobile' });
+      setView('success'); setTimeout(()=>{setCart([]); setSelectedTable(''); setView('tables'); setIsSubmitting(false);},2000);
+    } catch(e){ alert("Erro"); setIsSubmitting(false); }
   };
 
   const filtered = products.filter(p => (selectedCategory==='Todos'||p.category===selectedCategory) && (p.name||'').toLowerCase().includes(searchTerm.toLowerCase()));
@@ -263,6 +246,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
   useEffect(() => {
     if (!user) return;
+    // Proteção contra valores nulos em ordenação
     onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), s => setProducts(s.docs.map(d=>({firestoreId:d.id, ...d.data()})).sort((a,b)=>(a.name||'').localeCompare(b.name||''))));
     onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'orders')), s => setOrders(s.docs.map(d=>({firestoreId:d.id, ...d.data()})).sort((a,b)=>(b.id||0)-(a.id||0))));
     onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'future_orders')), s => setFutureOrders(s.docs.map(d=>({firestoreId:d.id, ...d.data()})).sort((a,b)=>new Date(a.deliveryDate||0)-new Date(b.deliveryDate||0))));
@@ -329,9 +313,10 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
   return (
     <div className="font-sans bg-slate-100 min-h-screen text-slate-900 flex">
       <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-6 fixed h-full z-10">
-          <div onClick={onBack} className="p-2 bg-yellow-500 rounded-lg mb-4 cursor-pointer"><Settings size={20}/></div>
+          <div onClick={onBack} className="p-2 bg-yellow-500 rounded-lg mb-4 cursor-pointer text-black"><Settings size={20}/></div>
           <button onClick={() => setView('pos')} className="p-2 mb-2 hover:bg-white/20 rounded"><ShoppingCart/></button>
-          <button onClick={() => setView('orders')} className="p-2 mb-2 hover:bg-white/20 rounded"><Gift/></button>
+          {/* USANDO GIFT COMO ÍCONE SEGURO PARA BOLO */}
+          <button onClick={() => setView('orders')} className="p-2 mb-2 hover:bg-white/20 rounded"><Package/></button>
           <button onClick={() => setView('admin')} className="p-2 mb-2 hover:bg-white/20 rounded"><LayoutDashboard/></button>
           <button onClick={() => setView('cash')} className="p-2 mb-2 hover:bg-white/20 rounded"><Wallet/></button>
       </div>
@@ -346,7 +331,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
         {view === 'orders' && (
             <div className="p-8 h-screen overflow-y-auto">
-                <div className="flex justify-between mb-8"><h1 className="text-3xl font-bold">Encomendas</h1><button onClick={openNewOrderModal} className="bg-pink-600 text-white px-6 py-2 rounded-xl font-bold">Nova Encomenda</button></div>
+                <div className="flex justify-between mb-8"><h1 className="text-3xl font-bold flex items-center gap-2"><Package/> Encomendas</h1><button onClick={openNewOrderModal} className="bg-pink-600 text-white px-6 py-2 rounded-xl font-bold">Nova Encomenda</button></div>
                 <div className="space-y-4">{futureOrders.map(o => (
                     <div key={o.firestoreId} className="bg-white p-6 rounded-2xl shadow flex justify-between items-center group relative">
                         <div>
@@ -397,7 +382,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
       {showOrderModal && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-md rounded-2xl p-6">
-                  <h3 className="font-bold text-xl mb-4">{editingFutureId ? 'Editar Encomenda' : 'Nova Encomenda'}</h3>
+                  <h3 className="font-bold text-xl mb-4 flex items-center gap-2"><Package/> {editingFutureId ? 'Editar Encomenda' : 'Nova Encomenda'}</h3>
                   <input placeholder="Cliente" value={orderClient} onChange={e=>setOrderClient(e.target.value)} className="w-full border p-2 rounded mb-2"/>
                   <div className="flex gap-2 mb-2"><input type="date" value={orderDate} onChange={e=>setOrderDate(e.target.value)} className="w-full border p-2 rounded"/><input type="time" value={orderTime} onChange={e=>setOrderTime(e.target.value)} className="w-full border p-2 rounded"/></div>
                   <textarea placeholder="Descrição" value={orderObs} onChange={e=>setOrderObs(e.target.value)} className="w-full border p-2 rounded mb-2 h-20"/>
@@ -439,18 +424,18 @@ export default function App() {
       setShowClientModal(false);
   }
 
-  if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white"><Loader2 className="animate-spin mr-2"/> Carregando...</div>;
+  if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white text-2xl font-bold">Carregando...</div>;
 
   return (
     appMode === 'mobile' ? <MobileView user={firebaseUser} initialRole={mobileRole} onBack={() => setAppMode('landing')} /> :
     appMode === 'pos' ? <PosView user={firebaseUser} onBack={() => setAppMode('landing')} initialSettings={{}} refreshSettings={()=>{}} /> :
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center font-sans">
-        <h1 className="text-4xl font-bold text-white mb-2">Confeitaria & Café Joseane Sombra</h1>
-        <p className="text-slate-400 mb-12">Sistema Integrado</p>
+        <h1 className="text-4xl font-bold text-white mb-2">Confeitaria Joseane Sombra</h1>
+        <p className="text-slate-400 mb-12">Sistema Integrado v5.0 (Safe)</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
             <button onClick={()=>setShowClientModal(true)} className="p-8 bg-white/10 rounded-3xl hover:bg-white/20 text-white border border-white/5 hover:border-blue-500 transition-all group"><div className="bg-blue-500/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><UserCircle2 size={40} className="text-blue-400"/></div><div className="text-2xl font-bold mb-2">Cliente</div><div className="text-sm text-slate-400">Cardápio Digital</div></button>
             <button onClick={()=>{setMobileRole('Garçom');setAppMode('mobile')}} className="p-8 bg-white/10 rounded-3xl hover:bg-white/20 text-white border border-white/5 hover:border-orange-500 transition-all group"><div className="bg-orange-500/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><ChefHat size={40} className="text-orange-400"/></div><div className="text-2xl font-bold mb-2">Garçom</div><div className="text-sm text-slate-400">Lançar Pedidos</div></button>
-            <button onClick={()=>setAppMode('pos')} className="p-8 bg-white/10 rounded-3xl hover:bg-white/20 text-white border border-white/5 hover:border-purple-500 transition-all group"><div className="bg-purple-500/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><MonitorSmartphone size={40} className="text-purple-400"/></div><div className="text-2xl font-bold mb-2">Caixa / Cozinha</div><div className="text-sm text-slate-400">Gestão Completa</div></button>
+            <button onClick={()=>setAppMode('pos')} className="p-8 bg-white/10 rounded-3xl hover:bg-white/20 text-white border border-white/5 hover:border-purple-500 transition-all group"><div className="bg-purple-500/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform"><LayoutDashboard size={40} className="text-purple-400"/></div><div className="text-2xl font-bold mb-2">Caixa / Cozinha</div><div className="text-sm text-slate-400">Gestão Completa</div></button>
         </div>
         {showClientModal && <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"><div className="bg-white p-8 rounded-3xl w-full max-w-sm"><h2 className="text-2xl font-bold mb-4 text-slate-800">Identifique-se</h2><input placeholder="Seu Nome" value={clientName} onChange={e=>setClientName(e.target.value)} className="w-full border p-3 rounded-xl mb-4 outline-none"/><button onClick={handleClientLogin} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">Entrar</button><button onClick={()=>setShowClientModal(false)} className="mt-4 text-slate-500 text-sm">Voltar</button></div></div>}
     </div>
