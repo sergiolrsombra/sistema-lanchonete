@@ -10,7 +10,8 @@ import {
   Clock, ArrowRightLeft, Store, MonitorSmartphone, Cake, CalendarClock, Phone,
   CheckSquare, Printer, Settings, MessageCircle, AlertOctagon, Sparkles
 } from 'lucide-react';
-
+// Adicione esta linha no topo para definir um ID fixo para a loja
+const STORE_ID = "loja-joseane-sombra-v1";
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, deleteDoc, setDoc, getDoc, Timestamp, writeBatch } from "firebase/firestore";
