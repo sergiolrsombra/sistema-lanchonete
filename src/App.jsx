@@ -257,14 +257,14 @@ const CashControl = ({ user, orders }) => {
 
   useEffect(() => {
     if (!user) return;
-    const unsubRecord = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'records_v2')), (snap) => {
+    const unsubRecord = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'records_v2')), (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       setRecords(docs); setLoading(false);
     });
-    const unsubWeeks = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'closed_weeks')), (snap) => setClosedWeeks(snap.docs.map(d => d.id)));
+    const unsubWeeks = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'closed_weeks')), (snap) => setClosedWeeks(snap.docs.map(d => d.id)));
     const loadCalculator = async () => {
       try {
-        const docSnap = await getDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'app_state', 'calculator')); if (docSnap.exists()) setCashCounts(docSnap.data()); isCalculatorLoaded.current = true;
+        const docSnap = await getDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'app_state', 'calculator')); if (docSnap.exists()) setCashCounts(docSnap.data()); isCalculatorLoaded.current = true;
       } catch (e) { isCalculatorLoaded.current = true; }
     };
     loadCalculator();
@@ -274,7 +274,7 @@ const CashControl = ({ user, orders }) => {
   }, [user]);
 
   useEffect(() => {
-    if (!user || !isCalculatorLoaded.current) return; const timer = setTimeout(async () => { try { await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'app_state', 'calculator'), cashCounts); } catch (e) { } }, 1000); return () => clearTimeout(timer);
+    if (!user || !isCalculatorLoaded.current) return; const timer = setTimeout(async () => { try { await setDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'app_state', 'calculator'), cashCounts); } catch (e) { } }, 1000); return () => clearTimeout(timer);
   }, [cashCounts, user]);
 
   const posTotals = useMemo(() => {
@@ -300,9 +300,9 @@ const CashControl = ({ user, orders }) => {
     Object.keys(cashCounts.bills).forEach(k => totalBills += (parseFloat(cashCounts.bills[k]) || 0) * parseFloat(k)); Object.keys(cashCounts.coins).forEach(k => totalCoins += (parseFloat(cashCounts.coins[k]) || 0) * parseFloat(k));
     return { totalBills, totalCoins, pixVal: parseFloat(cashCounts.pix) || 0, grandTotal: totalBills + totalCoins + (parseFloat(cashCounts.pix) || 0) };
   }, [cashCounts]);
-  const handleSave = async () => { if (!user || isSubmitting) return; const valPix = parseFloat(pix) || 0, valCash = parseFloat(cash) || 0, valCard = parseFloat(card) || 0; if ((valPix + valCash + valCard) < 0) { showToast("Valor negativo", 'error'); return; } setIsSubmitting(true); await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: Timestamp.now() }); setPix(''); setCash(''); setCard(''); showToast("Salvo!"); setIsSubmitting(false); };
-  const handleDelete = async (id) => { if (window.confirm("Excluir?")) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records_v2', id)); };
-  const toggleWeekClose = async (id, isClosed) => { if (isClosed) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'closed_weeks', id)); else await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'closed_weeks', id), { at: Date.now() }); };
+  const handleSave = async () => { if (!user || isSubmitting) return; const valPix = parseFloat(pix) || 0, valCash = parseFloat(cash) || 0, valCard = parseFloat(card) || 0; if ((valPix + valCash + valCard) < 0) { showToast("Valor negativo", 'error'); return; } setIsSubmitting(true); await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: Timestamp.now() }); setPix(''); setCash(''); setCard(''); showToast("Salvo!"); setIsSubmitting(false); };
+  const handleDelete = async (id) => { if (window.confirm("Excluir?")) await deleteDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'records_v2', id)); };
+  const toggleWeekClose = async (id, isClosed) => { if (isClosed) await deleteDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'closed_weeks', id)); else await setDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'closed_weeks', id), { at: Date.now() }); };
   
   const weeks = useMemo(() => {
     const groups = {}; records.forEach(rec => {
@@ -408,10 +408,10 @@ const MobileView = ({ user, initialRole, onBack }) => {
 
   useEffect(() => {
     if (!user) return;
-    const unsubProd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), (snap) => {
+    const unsubProd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'products')), (snap) => {
       if (snap.empty) {
         const batch = writeBatch(db);
-        DEFAULT_PRODUCTS_SEED.forEach(p => { batch.set(doc(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), p); });
+        DEFAULT_PRODUCTS_SEED.forEach(p => { batch.set(doc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'products')), p); });
         batch.commit();
       } else {
         const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
@@ -419,7 +419,7 @@ const MobileView = ({ user, initialRole, onBack }) => {
         setCategories(['Todos', ...new Set(list.map(p => p.category).filter(Boolean))]);
       }
     });
-    const unsubOrders = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'orders')), (snap) => {
+    const unsubOrders = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders')), (snap) => {
       const list = snap.docs.map(d => d.data());
       if (list.length > 0) setOrderCounter(Math.max(...list.map(o => o.id || 0)) + 1);
     });
@@ -438,9 +438,9 @@ const MobileView = ({ user, initialRole, onBack }) => {
     if (!cart.length) return; setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
-      cart.forEach(c => { const p = products.find(prod => prod.id === c.id); if (p) batch.update(doc(db, 'artifacts', appId, 'users', user.uid, 'products', p.firestoreId), { stock: p.stock - c.qty }); });
+      cart.forEach(c => { const p = products.find(prod => prod.id === c.id); if (p) batch.update(doc(db, 'artifacts', appId, 'users', STORE_ID, 'products', p.firestoreId), { stock: p.stock - c.qty }); });
       await batch.commit();
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { id: orderCounter, client: selectedTable, waiter: initialRole, items: cart, total: cart.reduce((a, i) => a + (i.price * i.qty), 0), status: 'ABERTO', paymentStatus: 'ABERTO', kitchenStatus: 'Pendente', method: 'Aguardando', date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Mobile' });
+      await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders'), { id: orderCounter, client: selectedTable, waiter: initialRole, items: cart, total: cart.reduce((a, i) => a + (i.price * i.qty), 0), status: 'ABERTO', paymentStatus: 'ABERTO', kitchenStatus: 'Pendente', method: 'Aguardando', date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Mobile' });
       setView('success'); setTimeout(() => { setCart([]); setSelectedTable(''); setView('tables'); setIsSubmitting(false); }, 2000);
     } catch (e) {
       alert("Erro"); setIsSubmitting(false);
@@ -635,12 +635,12 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
   useEffect(() => {
     if (!user) return;
-    const unsubProd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'products')), (snap) => { if (!snap.empty) { const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); setProducts(list); } });
-    const unsubOrders = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'orders')), (snap) => {
+    const unsubProd = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'products')), (snap) => { if (!snap.empty) { const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); setProducts(list); } });
+    const unsubOrders = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders')), (snap) => {
       const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id); setOrders(list); if (list.length > 0) setOrderCounter(Math.max(...list.map(o => o.id)) + 1);
     });
-    const unsubMove = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.date || '').localeCompare(a.date || ''))); });
-    const unsubFuture = onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
+    const unsubMove = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.date || '').localeCompare(a.date || ''))); });
+    const unsubFuture = onSnapshot(query(collection(db, 'artifacts', appId, 'users', STORE_ID, 'future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
     return () => { unsubProd(); unsubOrders(); unsubMove(); unsubFuture(); };
   }, [user]);
 
@@ -666,7 +666,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
     if (!selectedTabToSettle && status === 'PAGO') {
       const batch = writeBatch(db);
-      cart.forEach(cItem => { const pItem = products.find(p => p.id === cItem.id); if (pItem && pItem.firestoreId) { const newStock = pItem.stock - cItem.qty; batch.update(doc(db, 'artifacts', appId, 'users', user.uid, 'products', pItem.firestoreId), { stock: newStock }); } });
+      cart.forEach(cItem => { const pItem = products.find(p => p.id === cItem.id); if (pItem && pItem.firestoreId) { const newStock = pItem.stock - cItem.qty; batch.update(doc(db, 'artifacts', appId, 'users', STORE_ID, 'products', pItem.firestoreId), { stock: newStock }); } });
       await batch.commit();
     }
     const nowISO = new Date().toISOString();
@@ -675,15 +675,15 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
     try {
       if (selectedTabToSettle) {
-        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'orders', selectedTabToSettle.firestoreId), { paymentStatus: 'PAGO', method: methodString, payments: paymentsArray, paidAt: nowISO, date: selectedTabToSettle.date || nowISO });
+        await updateDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'orders', selectedTabToSettle.firestoreId), { paymentStatus: 'PAGO', method: methodString, payments: paymentsArray, paidAt: nowISO, date: selectedTabToSettle.date || nowISO });
         alert("Comanda Recebida!");
       } else {
         if (status === 'ABERTO') {
           const existing = orders.find(o => o.client === client && o.paymentStatus === 'ABERTO');
-          if (existing) await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'orders', existing.firestoreId), { items: [...existing.items, ...cart], total: existing.total + totalCart, kitchenStatus: 'Pendente', updatedAt: nowISO });
-          else await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { id: orderCounter, items: [...cart], total: totalCart, status: 'ABERTO', paymentStatus: 'ABERTO', method: 'Aguardando', client, kitchenStatus: 'Pendente', date: nowISO, paidAt: null, time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Caixa' });
+          if (existing) await updateDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'orders', existing.firestoreId), { items: [...existing.items, ...cart], total: existing.total + totalCart, kitchenStatus: 'Pendente', updatedAt: nowISO });
+          else await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders'), { id: orderCounter, items: [...cart], total: totalCart, status: 'ABERTO', paymentStatus: 'ABERTO', method: 'Aguardando', client, kitchenStatus: 'Pendente', date: nowISO, paidAt: null, time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Caixa' });
         } else {
-          await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { id: orderCounter, items: [...cart], total: totalCart, status: 'Pago', paymentStatus: 'PAGO', method: methodString, payments: paymentsArray, client, kitchenStatus: 'Pendente', date: nowISO, paidAt: nowISO, time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Caixa' });
+          await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders'), { id: orderCounter, items: [...cart], total: totalCart, status: 'Pago', paymentStatus: 'PAGO', method: methodString, payments: paymentsArray, client, kitchenStatus: 'Pendente', date: nowISO, paidAt: nowISO, time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Caixa' });
         }
       }
     } catch (e) { alert("Erro ao salvar pedido."); }
@@ -713,13 +713,13 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
       order.items.forEach(cartItem => {
         const originalProduct = products.find(p => p.id === cartItem.id);
         if (originalProduct && originalProduct.firestoreId) {
-          const productRef = doc(db, 'artifacts', appId, 'users', user.uid, 'products', originalProduct.firestoreId);
+          const productRef = doc(db, 'artifacts', appId, 'users', STORE_ID, 'products', originalProduct.firestoreId);
           batch.update(productRef, { stock: originalProduct.stock + cartItem.qty });
         }
       });
 
       // 2. Deletar o pedido original
-      const orderRef = doc(db, 'artifacts', appId, 'users', user.uid, 'orders', order.firestoreId);
+      const orderRef = doc(db, 'artifacts', appId, 'users', STORE_ID, 'orders', order.firestoreId);
       batch.delete(orderRef);
 
       await batch.commit();
@@ -794,14 +794,14 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
     if (editingFutureOrder) {
       // Atualizando encomenda existente
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'future_orders', editingFutureOrder.firestoreId), {
+      await updateDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'future_orders', editingFutureOrder.firestoreId), {
         ...orderData,
         updatedAt: new Date().toISOString()
       });
       alert("Encomenda atualizada com sucesso!");
     } else {
       // Criando nova encomenda
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'future_orders'), {
+      await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'future_orders'), {
         ...orderData,
         status: 'Pendente',
         createdAt: new Date().toISOString()
@@ -809,7 +809,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
       // Lançamento financeiro do sinal (apenas se for novo registro para não duplicar)
       if (signalVal > 0) {
-        await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { 
+        await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders'), { 
           id: orderCounter + 1, 
           client: `Sinal: ${orderClient}`, 
           total: signalVal, 
@@ -835,8 +835,8 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
   const handleSettleOrder = async () => {
     if (!selectedFutureOrder) return;
     const amountReceived = parseFloat(settleValue) || 0;
-    await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'future_orders', selectedFutureOrder.firestoreId), { status: 'Concluído', finalPayment: amountReceived, finalPaymentMethod: settleMethod, completedAt: new Date().toISOString() });
-    if (amountReceived > 0) await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
+    await updateDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'future_orders', selectedFutureOrder.firestoreId), { status: 'Concluído', finalPayment: amountReceived, finalPaymentMethod: settleMethod, completedAt: new Date().toISOString() });
+    if (amountReceived > 0) await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
     setSelectedFutureOrder(null); alert("Encerrada!");
   };
 
@@ -857,17 +857,17 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
   };
 
   const saveSettings = async () => {
-    try { await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'app_state', 'settings'), configForm); refreshSettings(configForm); alert("Configurações Salvas!"); } catch (e) { alert("Erro ao salvar"); }
+    try { await setDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'app_state', 'settings'), configForm); refreshSettings(configForm); alert("Configurações Salvas!"); } catch (e) { alert("Erro ao salvar"); }
   };
 
   const handleAddCashMovement = async () => {
     if (!movementValue || parseFloat(movementValue) <= 0 || !user) return;
-    try { await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); alert("Sucesso!"); } catch (e) { alert("Erro"); }
+    try { await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); alert("Sucesso!"); } catch (e) { alert("Erro"); }
   };
 
-  const addNewProduct = async () => { if (!newProdName || !newProdPrice || !user) return; await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'products'), { id: Date.now(), name: newProdName, price: parseFloat(newProdPrice), category: newProdCat, stock: 50, icon: 'burger' }); setNewProdName(''); setNewProdPrice(''); };
-  const handleUpdateProduct = async () => { if (!editingProduct || !user) return; await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'products', editingProduct.firestoreId), { name: editingProduct.name, price: editingProduct.price, category: editingProduct.category, stock: editingProduct.stock }); setEditingProduct(null); };
-  const handleDeleteProduct = async () => { if (window.confirm('Excluir?') && editingProduct.firestoreId) { await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'products', editingProduct.firestoreId)); setEditingProduct(null); } };
+  const addNewProduct = async () => { if (!newProdName || !newProdPrice || !user) return; await addDoc(collection(db, 'artifacts', appId, 'users', STORE_ID, 'products'), { id: Date.now(), name: newProdName, price: parseFloat(newProdPrice), category: newProdCat, stock: 50, icon: 'burger' }); setNewProdName(''); setNewProdPrice(''); };
+  const handleUpdateProduct = async () => { if (!editingProduct || !user) return; await updateDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'products', editingProduct.firestoreId), { name: editingProduct.name, price: editingProduct.price, category: editingProduct.category, stock: editingProduct.stock }); setEditingProduct(null); };
+  const handleDeleteProduct = async () => { if (window.confirm('Excluir?') && editingProduct.firestoreId) { await deleteDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'products', editingProduct.firestoreId)); setEditingProduct(null); } };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
   const modalTotal = selectedTabToSettle ? selectedTabToSettle.total : cartTotal;
@@ -1027,7 +1027,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 mb-3"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description}</p></div>
                 <div className="flex gap-2 justify-end">
                   <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-3 py-1 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">Editar</button>
-                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Excluir?')) deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'future_orders', order.firestoreId)); }} className="text-xs text-red-400 hover:text-red-600 font-bold z-10 px-3 py-1 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">Excluir</button>
+                  <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Excluir?')) deleteDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'future_orders', order.firestoreId)); }} className="text-xs text-red-400 hover:text-red-600 font-bold z-10 px-3 py-1 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">Excluir</button>
                 </div>
               </div>
             </div>
@@ -1059,7 +1059,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
         </div>
       )}
 
-      {view === 'kitchen' && <div className="pl-16 p-8 h-screen overflow-y-auto"><h1 className="text-2xl font-bold mb-6">Cozinha</h1><div className="grid grid-cols-4 gap-4">{orders.filter(o => o.kitchenStatus === 'Pendente').map(o => (<div key={o.id} className="bg-white border-l-4 border-orange-500 p-4 rounded shadow"><div className="flex justify-between"><span className="font-bold">#{String(o.id).slice(0, 4)} {o.client}</span><span className="text-xs">{o.time}</span></div><hr className="my-2" /><ul className="text-sm mb-4">{o.items && o.items.map((i, idx) => <li key={idx}><b>{i.qty}x</b> {i.name}</li>)}</ul><button onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'orders', o.firestoreId), { kitchenStatus: 'Pronto' })} className="w-full bg-orange-100 text-orange-700 py-2 rounded font-bold">Pronto</button></div>))}</div></div>}
+      {view === 'kitchen' && <div className="pl-16 p-8 h-screen overflow-y-auto"><h1 className="text-2xl font-bold mb-6">Cozinha</h1><div className="grid grid-cols-4 gap-4">{orders.filter(o => o.kitchenStatus === 'Pendente').map(o => (<div key={o.id} className="bg-white border-l-4 border-orange-500 p-4 rounded shadow"><div className="flex justify-between"><span className="font-bold">#{String(o.id).slice(0, 4)} {o.client}</span><span className="text-xs">{o.time}</span></div><hr className="my-2" /><ul className="text-sm mb-4">{o.items && o.items.map((i, idx) => <li key={idx}><b>{i.qty}x</b> {i.name}</li>)}</ul><button onClick={() => updateDoc(doc(db, 'artifacts', appId, 'users', STORE_ID, 'orders', o.firestoreId), { kitchenStatus: 'Pronto' })} className="w-full bg-orange-100 text-orange-700 py-2 rounded font-bold">Pronto</button></div>))}</div></div>}
       {view === 'cash' && <CashControl user={user} orders={orders} />}
 
       {view === 'admin' && (
