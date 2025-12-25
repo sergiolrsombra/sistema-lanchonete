@@ -16,7 +16,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, deleteDoc, setDoc, getDoc, Timestamp, writeBatch } from "firebase/firestore";
 
 // --- CONFIGURAÇÃO DO FIREBASE ---
-const manualConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyBlgCjSDNNGJPhsK-3vlJA1-5nNIxPzmg0",
   authDomain: "lanchonete-6b915.firebaseapp.com",
   projectId: "lanchonete-6b915",
