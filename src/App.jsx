@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { version } from '../package.json';
 import { 
   Utensils, ShoppingCart, Send, User, ChevronLeft, Minus, Plus,
   CheckCircle, Search, ChefHat, UserCircle2, Users, LayoutDashboard,
@@ -1310,7 +1311,11 @@ export default function App() {
             </div>
           )}
 
-          <div className="absolute bottom-6 text-slate-500 text-xs">Sistema Integrado v1.0 • Full Features</div>
+          <footer className="p-4 text-center">
+         <p className="text-sm text-gray-400">
+           Sistema Lanchonete © 2025 - v{version}
+         </p>
+      </footer>
         </div>
   );
 }
