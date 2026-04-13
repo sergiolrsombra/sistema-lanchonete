@@ -24,7 +24,6 @@ const fallbackFirebaseConfig = {
   appId: "1:894517269506:web:3c25cf6a65cb4d4687831b"
 };
 
-// Tratamento seguro para evitar crash na leitura da variável de ambiente no Preview
 let firebaseConfig = fallbackFirebaseConfig;
 try {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -39,7 +38,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'lanchonete-joseane-sombra';
 
-// Helper para manter os caminhos dentro das regras rigorosas do banco
 const getCollectionRef = (colName) => collection(db, 'artifacts', appId, 'public', 'data', colName);
 const getDocRef = (colName, docId) => doc(db, 'artifacts', appId, 'public', 'data', colName, docId);
 
@@ -47,33 +45,34 @@ const getDocRef = (colName, docId) => doc(db, 'artifacts', appId, 'public', 'dat
 const apiKey = ""; 
 
 const callGemini = async (prompt) => {
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
-      {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const payload = { contents: [{ parts: [{ text: prompt }] }] };
+
+  let retries = 5;
+  const delays = [1000, 2000, 4000, 8000, 16000];
+
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error(`Erro API: ${response.status}`);
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível gerar resposta.";
+    } catch (error) {
+      if (i === retries - 1) {
+        return "Desculpe, a IA está indisponível no momento.";
       }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Erro API: ${response.status}`);
+      await new Promise(res => setTimeout(res, delays[i]));
     }
-
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Não foi possível gerar resposta.";
-  } catch (error) {
-    console.error("Erro Gemini:", error);
-    return null;
   }
 };
 
-// --- DADOS PADRÃO (SEED COM NOVO CARDÁPIO) ---
+// --- DADOS PADRÃO ---
 const DEFAULT_PRODUCTS_SEED = [
   { id: 1, name: 'Café 210ml', price: 4.00, category: 'Bebidas', stock: 100, icon: 'drink' },
   { id: 2, name: 'Tapioca', price: 4.00, category: 'Lanches', stock: 50, icon: 'burger' },
@@ -85,11 +84,10 @@ const DEFAULT_PRODUCTS_SEED = [
 ];
 
 const CATEGORIES = ['Lanches', 'Adicionais', 'Bebidas', 'Salgados', 'Sobremesas', 'Bolos'];
-const MESAS = Array.from({ length: 15 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
-const version = "2.0.1"; // Versão com Montagem de Pratos e Fix de Preview
+const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
+const version = "2.0.1";
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
-
 const formatMoney = (val) => {
   const n = typeof val === 'string' ? parseFloat(val) : val;
   if (isNaN(n)) return 'R$ 0,00';
@@ -179,7 +177,6 @@ const ConfirmDialog = ({ isOpen, message, onConfirm, onCancel }) => {
   );
 };
 
-// LÓGICAS DE CARRINHO E ESTOQUE (AGORA SUPORTAM SUBITENS/MONTAR PRATO)
 const calcItemTotal = (item) => {
   const subTotal = (item.subItems || []).reduce((acc, sub) => acc + (sub.price * sub.qty), 0);
   return (item.price + subTotal) * item.qty;
@@ -563,7 +560,6 @@ const MobileView = ({ user, initialRole, onBack }) => {
   
   const addToCart = (p) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
-    // Procura se o item já existe no carrinho SEM subitens para poder agrupar as quantidades.
     const ex = cart.find(i => i.id === p.id && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
@@ -585,7 +581,6 @@ const MobileView = ({ user, initialRole, onBack }) => {
     }
   };
 
-  // LOGICA PARA JUNTAR/VINCULAR ITENS (Montar Prato)
   const linkItem = (sourceCartItemId, targetCartItemId) => {
     const sourceItem = cart.find(i => i.cartItemId === sourceCartItemId);
     if (!sourceItem) return;
@@ -621,7 +616,6 @@ const MobileView = ({ user, initialRole, onBack }) => {
         }
         return item;
       });
-      // Devolve pro carrinho avulso
       newCart.push({ ...subItem, cartItemId: Date.now().toString() + Math.random().toString(), subItems: [] });
       return newCart;
     });
@@ -710,7 +704,6 @@ const MobileView = ({ user, initialRole, onBack }) => {
           </div>
           <div className="p-4 grid grid-cols-2 gap-3">
             {filtered.map(p => {
-              // Só mostra a quantidade no menu baseando-se no total solto no carrinho para aquele produto (sem olhar subitems)
               const qty = cart.filter(i => i.id === p.id).reduce((sum, i) => sum + i.qty, 0);
               return (
                 <div key={p.id} className={`bg-white p-3 rounded-2xl shadow-sm border flex flex-col items-center text-center gap-2 transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'}`}>
@@ -902,8 +895,8 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
 
   const [configForm, setConfigForm] = useState({
     ...initialSettings,
-    docType: initialSettings.docType || 'CNPJ',
-    docId: initialSettings.docId || initialSettings.cnpj || ''
+    docType: initialSettings?.docType || 'CNPJ',
+    docId: initialSettings?.docId || initialSettings?.cnpj || ''
   });
 
   const clientRef = useRef(null);
@@ -937,8 +930,8 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
     setSettings(initialSettings);
     setConfigForm({
       ...initialSettings,
-      docType: initialSettings.docType || 'CNPJ',
-      docId: initialSettings.docId || initialSettings.cnpj || ''
+      docType: initialSettings?.docType || 'CNPJ',
+      docId: initialSettings?.docId || initialSettings?.cnpj || ''
     });
   }, [initialSettings]);
 
@@ -1176,7 +1169,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
   };
 
   const submitSettingsPassword = () => {
-    const currentPass = settings.settingsPassword || '1234';
+    const currentPass = settings?.settingsPassword || '1234';
     if (settingsPasswordInput === currentPass) { setIsSettingsUnlocked(true); setShowSettingsPasswordModal(false); setView('settings'); setSettingsPasswordInput(''); } 
     else { showToastMsg("Senha incorreta", "error"); setSettingsPasswordInput(''); }
   };
@@ -1334,8 +1327,8 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
             <div className="max-w-2xl bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
               <div className="grid grid-cols-1 gap-6">
                 <h3 className="font-bold text-lg border-b pb-2 text-slate-700">Dados do Estabelecimento</h3>
-                <div><label className="block text-sm font-bold text-slate-500 mb-1">Nome da Loja</label><input value={configForm.storeName} onChange={e => setConfigForm({ ...configForm, storeName: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Minha Confeitaria" /></div>
-                <div><label className="block text-sm font-bold text-slate-500 mb-1">Endereço Completo</label><input value={configForm.address} onChange={e => setConfigForm({ ...configForm, address: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                <div><label className="block text-sm font-bold text-slate-500 mb-1">Nome da Loja</label><input value={configForm.storeName || ''} onChange={e => setConfigForm({ ...configForm, storeName: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Minha Confeitaria" /></div>
+                <div><label className="block text-sm font-bold text-slate-500 mb-1">Endereço Completo</label><input value={configForm.address || ''} onChange={e => setConfigForm({ ...configForm, address: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="flex gap-4 mb-1">
@@ -1343,7 +1336,7 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
                       <label className="flex items-center gap-2 cursor-pointer"><input type="radio" name="docType" checked={configForm.docType === 'CPF'} onChange={() => setConfigForm({ ...configForm, docType: 'CPF', docId: '' })} className="accent-blue-600" /><span className="text-sm font-bold text-slate-500">CPF</span></label>
                     </div>
                     <input
-                      value={configForm.docId}
+                      value={configForm.docId || ''}
                       onChange={e => {
                         const val = configForm.docType === 'CPF' ? maskCpf(e.target.value) : maskCnpj(e.target.value);
                         setConfigForm({ ...configForm, docId: val });
@@ -1352,12 +1345,12 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
                       placeholder={configForm.docType === 'CPF' ? '000.000.000-00' : '00.000.000/0000-00'}
                     />
                   </div>
-                  <div><label className="block text-sm font-bold text-slate-500 mb-1">Telefone / WhatsApp</label><input value={configForm.phone} onChange={e => setConfigForm({ ...configForm, phone: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                  <div><label className="block text-sm font-bold text-slate-500 mb-1">Telefone / WhatsApp</label><input value={configForm.phone || ''} onChange={e => setConfigForm({ ...configForm, phone: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" /></div>
                 </div>
                 <h3 className="font-bold text-lg border-b pb-2 text-slate-700 mt-4">Segurança</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-purple-50 p-4 rounded-xl border border-purple-100"><label className="block text-sm font-bold text-purple-700 mb-1">Senha Caixa</label><input type="text" value={configForm.posPassword} onChange={e => setConfigForm({ ...configForm, posPassword: e.target.value })} className="w-full border border-purple-200 p-2 rounded-lg outline-none bg-white focus:ring-2 focus:ring-purple-500" /></div>
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200"><label className="block text-sm font-bold text-gray-700 mb-1">Senha Config</label><input type="text" value={configForm.settingsPassword} onChange={e => setConfigForm({ ...configForm, settingsPassword: e.target.value })} className="w-full border border-gray-200 p-2 rounded-lg outline-none bg-white focus:ring-2 focus:ring-gray-500" /></div>
+                  <div className="bg-purple-50 p-4 rounded-xl border border-purple-100"><label className="block text-sm font-bold text-purple-700 mb-1">Senha Caixa</label><input type="text" value={configForm.posPassword || ''} onChange={e => setConfigForm({ ...configForm, posPassword: e.target.value })} className="w-full border border-purple-200 p-2 rounded-lg outline-none bg-white focus:ring-2 focus:ring-purple-500" /></div>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200"><label className="block text-sm font-bold text-gray-700 mb-1">Senha Config</label><input type="text" value={configForm.settingsPassword || ''} onChange={e => setConfigForm({ ...configForm, settingsPassword: e.target.value })} className="w-full border border-gray-200 p-2 rounded-lg outline-none bg-white focus:ring-2 focus:ring-gray-500" /></div>
                 </div>
                 <button onClick={saveSettings} className="bg-green-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-green-700 shadow-lg shadow-green-600/20 mt-4 transition-all active:scale-95">Salvar Configurações</button>
               </div>
@@ -1803,5 +1796,110 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
         )}
       </div>
     </div>
+  );
+};
+
+// --------------------------------------------------------------------------------
+// COMPONENTE PRINCIPAL (ENTRY POINT)
+// --------------------------------------------------------------------------------
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null);
+  const [initialRole, setInitialRole] = useState('');
+  const [settings, setSettings] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Auth error", e);
+      }
+    };
+    initAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchSettings = async () => {
+      try {
+        const snap = await getDoc(getDocRef('app_state', 'settings'));
+        if (snap.exists()) setSettings(snap.data());
+      } catch (e) {
+        console.error("Erro ao carregar configurações", e);
+      }
+    };
+    fetchSettings();
+  }, [user]);
+
+  if (isLoading) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white gap-4">
+        <Loader2 className="animate-spin text-blue-500" size={48} />
+        <p className="font-medium animate-pulse">Carregando o sistema...</p>
+      </div>
+    );
+  }
+
+  if (!role) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl border border-slate-200">
+          <div className="flex justify-center mb-6 text-blue-600">
+            <Store size={64} />
+          </div>
+          <h1 className="text-3xl font-black text-center text-slate-800 mb-2">Lanchonete System</h1>
+          <p className="text-center text-slate-500 mb-8 font-medium">Selecione o seu perfil de acesso</p>
+          
+          <div className="space-y-4">
+            <button 
+              onClick={() => { setInitialRole('Garçom / Cliente'); setRole('mobile'); }} 
+              className="w-full flex items-center p-5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl transition-all group"
+            >
+              <div className="bg-indigo-500 text-white p-3 rounded-xl mr-4 group-hover:scale-110 transition-transform">
+                <MonitorSmartphone size={24} />
+              </div>
+              <div className="text-left flex-1">
+                <div className="font-bold text-indigo-900 text-lg">App Mobile</div>
+                <div className="text-indigo-600 text-sm font-medium">Cardápio Mesa e Garçom</div>
+              </div>
+              <ChevronRight className="text-indigo-400" />
+            </button>
+
+            <button 
+              onClick={() => { setInitialRole('Gerência'); setRole('pos'); }} 
+              className="w-full flex items-center p-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl transition-all shadow-lg group"
+            >
+              <div className="bg-blue-500 text-white p-3 rounded-xl mr-4 group-hover:scale-110 transition-transform shadow-md">
+                <LayoutDashboard size={24} />
+              </div>
+              <div className="text-left flex-1">
+                <div className="font-bold text-lg">Painel Administrativo</div>
+                <div className="text-slate-400 text-sm font-medium">POS, Cozinha, Caixa e Gestão</div>
+              </div>
+              <ChevronRight className="text-slate-500" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {role === 'mobile' && <MobileView user={user} initialRole={initialRole} onBack={() => setRole(null)} />}
+      {role === 'pos' && <PosView user={user} initialRole={initialRole} onBack={() => setRole(null)} initialSettings={settings} refreshSettings={setSettings} />}
+    </>
   );
 }
