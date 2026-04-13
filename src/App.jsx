@@ -1943,10 +1943,23 @@ export default function App() {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-100 p-4 relative">
         <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl border border-slate-200">
-          <div className="flex justify-center mb-6 text-blue-600">
-            <Store size={64} />
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/logo.jpg" 
+              alt="Logo Café da Praça" 
+              className="h-32 w-32 object-contain rounded-full shadow-lg border-4 border-amber-50"
+              onError={(e) => {
+                e.target.onerror = null;
+                // Fallback visual caso a imagem não seja encontrada na pasta public
+                e.target.src = 'https://placehold.co/150x150/fdf8f6/b45309?text=Logo&font=montserrat';
+              }}
+            />
           </div>
-          <h1 className="text-3xl font-black text-center text-slate-800 mb-2">Lanchonete System</h1>
+          <h1 className="text-3xl font-black text-center text-slate-800 mb-1 tracking-tight">CAFÉ DA PRAÇA</h1>
+          <div className="flex items-center justify-center gap-1.5 text-amber-600 mb-6 font-bold">
+            <Phone size={16} />
+            <span>(85) 9 9675-2621</span>
+          </div>
           <p className="text-center text-slate-500 mb-6 font-medium">Selecione o seu perfil de acesso</p>
           
           {authError && (
