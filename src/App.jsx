@@ -36,7 +36,9 @@ try {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'lanchonete-joseane-sombra';
+
+// ID ÚNICO PARA A NOVA LANCHONETE (Garante banco de dados limpo)
+const appId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'cafe-da-praca-fortaleza';
 
 const getCollectionRef = (colName) => collection(db, 'artifacts', appId, 'public', 'data', colName);
 const getDocRef = (colName, docId) => doc(db, 'artifacts', appId, 'public', 'data', colName, docId);
@@ -85,7 +87,7 @@ const DEFAULT_PRODUCTS_SEED = [
 
 const CATEGORIES = ['Lanches', 'Adicionais', 'Bebidas', 'Salgados', 'Sobremesas', 'Bolos'];
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
-const version = "2.0.2";
+const version = "2.0.3";
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
 const formatMoney = (val) => {
@@ -200,8 +202,8 @@ const printOrder = (order, settings, showToast) => {
     return;
   }
 
-  const storeName = settings?.storeName || "Confeitaria & Café";
-  const storePhone = settings?.phone || "";
+  const storeName = settings?.storeName || "Café da Praça";
+  const storePhone = settings?.phone || "(85) 9 9675-2621";
   const docId = settings?.docId || settings?.cnpj || "";
   const docType = settings?.docType || "";
 
@@ -856,7 +858,7 @@ const MobileView = ({ user, initialRole, onBack }) => {
 // --------------------------------------------------------------------------------
 // SISTEMA POS (CAIXA / GERENTE / CONFIGURAÇÕES)
 // --------------------------------------------------------------------------------
-const PosView = ({ user, onBack, initialSettings }) => {
+const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
   const [view, setView] = useState('pos');
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -1212,10 +1214,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const saveSettings = async () => {
     try { 
-      // Corrige erro excluindo propriedades com valores vazios/indefinidos
       const cleanData = Object.fromEntries(Object.entries(configForm).filter(([_, v]) => v !== undefined));
       await setDoc(getDocRef('app_state', 'settings'), cleanData, { merge: true }); 
       showToastMsg("Configurações Salvas!"); 
+      refreshSettings(cleanData);
     } 
     catch (e) { 
       console.error("Erro no saveSettings", e); 
@@ -1232,10 +1234,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const addNewProduct = async () => { 
     if (!newProdName || !newProdPrice || !user) return; 
     try { 
-      // Corrige o bug de preço que crashava ao digitar "4,00" em vez de "4.00"
       const priceNum = parseFloat(newProdPrice.toString().replace(',', '.'));
       if (isNaN(priceNum)) throw new Error("Preço inválido.");
-      
       await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: priceNum, category: newProdCat, stock: 50, icon: 'burger' }); 
       setNewProdName(''); 
       setNewProdPrice(''); 
@@ -1359,7 +1359,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL DE AUTORIZAÇÃO DE AÇÃO (EDITAR/CANCELAR) */}
         {actionAuthModal.show && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-red-100 animate-in zoom-in-95">
@@ -1389,7 +1388,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="max-w-2xl bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
               <div className="grid grid-cols-1 gap-6">
                 <h3 className="font-bold text-lg border-b pb-2 text-slate-700">Dados do Estabelecimento</h3>
-                <div><label className="block text-sm font-bold text-slate-500 mb-1">Nome da Loja</label><input value={configForm.storeName || ''} onChange={e => setConfigForm({ ...configForm, storeName: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Minha Confeitaria" /></div>
+                <div><label className="block text-sm font-bold text-slate-500 mb-1">Nome da Loja</label><input value={configForm.storeName || ''} onChange={e => setConfigForm({ ...configForm, storeName: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ex: Café da Praça" /></div>
                 <div><label className="block text-sm font-bold text-slate-500 mb-1">Endereço Completo</label><input value={configForm.address || ''} onChange={e => setConfigForm({ ...configForm, address: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1711,7 +1710,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL PAGAMENTO */}
         {showPaymentModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
@@ -1777,7 +1775,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL ENCOMENDA SELECIONADA */}
         {selectedFutureOrder && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
@@ -1804,7 +1801,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL MOVIMENTAÇÃO */}
         {showCashMovementModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
@@ -1817,7 +1813,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL NOVA ENCOMENDA */}
         {showOrderModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95">
@@ -1842,7 +1837,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL EDITAR PRODUTO */}
         {editingProduct && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
@@ -1870,9 +1864,8 @@ export default function App() {
   const [initialRole, setInitialRole] = useState('');
   const [settings, setSettings] = useState({});
   const [isLoading, setIsLoading] = useState(true);
-  const [authError, setAuthError] = useState(null); // <-- Novo estado para erros de autenticação
+  const [authError, setAuthError] = useState(null);
 
-  // --- ESTADOS DO MODAL DE SENHA ADMINISTRATIVA ---
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [adminError, setAdminError] = useState('');
@@ -1900,7 +1893,7 @@ export default function App() {
         }
       } catch (e) {
         console.error("Auth error", e);
-        setAuthError(e.code === 'auth/operation-not-allowed' ? 'O "Login Anônimo" (Anonymous) não está ativado no Firebase Authentication.' : e.message);
+        setAuthError(e.code === 'auth/operation-not-allowed' ? 'O "Login Anônimo" não está ativado no Firebase Authentication.' : e.message);
         setIsLoading(false);
       }
     };
@@ -1917,7 +1910,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // SINCRONIZAÇÃO EM TEMPO REAL DAS CONFIGURAÇÕES PARA CORRIGIR O SALVAMENTO
   useEffect(() => {
     if (!user) return;
     const unsubSettings = onSnapshot(getDocRef('app_state', 'settings'), (snap) => {
@@ -1950,12 +1942,11 @@ export default function App() {
               className="h-32 w-32 object-contain rounded-full shadow-lg border-4 border-amber-50"
               onError={(e) => {
                 e.target.onerror = null;
-                // Fallback visual caso a imagem não seja encontrada na pasta public
                 e.target.src = 'https://placehold.co/150x150/fdf8f6/b45309?text=Logo&font=montserrat';
               }}
             />
           </div>
-          <h1 className="text-3xl font-black text-center text-slate-800 mb-1 tracking-tight">CAFÉ DA PRAÇA</h1>
+          <h1 className="text-3xl font-black text-center text-slate-800 mb-1 tracking-tight uppercase">CAFÉ DA PRAÇA</h1>
           <div className="flex items-center justify-center gap-1.5 text-amber-600 mb-6 font-bold">
             <Phone size={16} />
             <span>(85) 9 9675-2621</span>
@@ -2005,7 +1996,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* MODAL DE SENHA DO PAINEL ADMINISTRATIVO */}
         {showAdminAuth && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 border-t-4 border-blue-600">
@@ -2015,7 +2005,7 @@ export default function App() {
                 </div>
               </div>
               <h3 className="text-xl font-black text-slate-800 mb-2 text-center">Acesso Gerencial</h3>
-              <p className="text-sm text-slate-500 mb-6 text-center font-medium">Digite a Senha Caixa para acessar o painel (Padrão: 1234).</p>
+              <p className="text-sm text-slate-500 mb-6 text-center font-medium">Digite a Senha Caixa para acessar o painel.</p>
               
               <input 
                 type="password" 
