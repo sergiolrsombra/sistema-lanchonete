@@ -316,14 +316,18 @@ const CashControl = ({ user, orders }) => {
     const unsubRecord = onSnapshot(query(getCollectionRef('records_v2')), (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       setRecords(docs); setLoading(false);
-    });
-    const unsubWeeks = onSnapshot(query(getCollectionRef('closed_weeks')), (snap) => setClosedWeeks(snap.docs.map(d => d.id)));
+    }, (err) => { console.error("Records error", err); setLoading(false); });
+    
+    const unsubWeeks = onSnapshot(query(getCollectionRef('closed_weeks')), (snap) => {
+      setClosedWeeks(snap.docs.map(d => d.id));
+    }, (err) => console.error("Weeks error", err));
+    
     const loadCalculator = async () => {
       try {
         const docSnap = await getDoc(getDocRef('app_state', 'calculator')); 
         if (docSnap.exists()) setCashCounts(docSnap.data()); 
         isCalculatorLoaded.current = true;
-      } catch (e) { isCalculatorLoaded.current = true; }
+      } catch (e) { console.error("Calc error", e); isCalculatorLoaded.current = true; }
     };
     loadCalculator();
     return () => {
