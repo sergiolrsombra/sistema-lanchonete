@@ -85,7 +85,7 @@ const DEFAULT_PRODUCTS_SEED = [
 
 const CATEGORIES = ['Lanches', 'Adicionais', 'Bebidas', 'Salgados', 'Sobremesas', 'Bolos'];
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
-const version = "2.0.1";
+const version = "2.0.2";
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
 const formatMoney = (val) => {
@@ -200,7 +200,6 @@ const printOrder = (order, settings, showToast) => {
     return;
   }
 
-  const remaining = order.total - (order.signal || 0);
   const storeName = settings?.storeName || "Confeitaria & Café";
   const storePhone = settings?.phone || "";
   const docId = settings?.docId || settings?.cnpj || "";
@@ -316,18 +315,18 @@ const CashControl = ({ user, orders }) => {
     const unsubRecord = onSnapshot(query(getCollectionRef('records_v2')), (snap) => {
       const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       setRecords(docs); setLoading(false);
-    }, (err) => { console.error("Records error", err); setLoading(false); });
+    }, (err) => { console.error("Records error:", err); setLoading(false); });
     
     const unsubWeeks = onSnapshot(query(getCollectionRef('closed_weeks')), (snap) => {
       setClosedWeeks(snap.docs.map(d => d.id));
-    }, (err) => console.error("Weeks error", err));
+    }, (err) => console.error("Weeks error:", err));
     
     const loadCalculator = async () => {
       try {
         const docSnap = await getDoc(getDocRef('app_state', 'calculator')); 
         if (docSnap.exists()) setCashCounts(docSnap.data()); 
         isCalculatorLoaded.current = true;
-      } catch (e) { console.error("Calc error", e); isCalculatorLoaded.current = true; }
+      } catch (e) { console.error("Calc error:", e); isCalculatorLoaded.current = true; }
     };
     loadCalculator();
     return () => {
@@ -400,9 +399,13 @@ const CashControl = ({ user, orders }) => {
       return; 
     } 
     setIsSubmitting(true); 
-    await addDoc(getCollectionRef('records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: Timestamp.now() }); 
-    setPix(''); setCash(''); setCard(''); 
-    showToast("Salvo!"); 
+    try {
+      await addDoc(getCollectionRef('records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: Timestamp.now() }); 
+      setPix(''); setCash(''); setCard(''); 
+      showToast("Salvo!"); 
+    } catch(e) {
+      console.error(e); showToast("Erro ao salvar.", 'error');
+    }
     setIsSubmitting(false); 
   };
 
@@ -411,16 +414,22 @@ const CashControl = ({ user, orders }) => {
       isOpen: true,
       msg: 'Deseja excluir este registro do caixa?',
       action: async () => {
-        await deleteDoc(getDocRef('records_v2', id));
-        setConfirmState({ isOpen: false, msg: '', action: null });
-        showToast("Registro excluído.");
+        try {
+          await deleteDoc(getDocRef('records_v2', id));
+          setConfirmState({ isOpen: false, msg: '', action: null });
+          showToast("Registro excluído.");
+        } catch(e) {
+          console.error(e); showToast("Erro ao excluir.", 'error');
+        }
       }
     });
   };
 
   const toggleWeekClose = async (id, isClosed) => { 
-    if (isClosed) await deleteDoc(getDocRef('closed_weeks', id)); 
-    else await setDoc(getDocRef('closed_weeks', id), { at: Date.now() }); 
+    try {
+      if (isClosed) await deleteDoc(getDocRef('closed_weeks', id)); 
+      else await setDoc(getDocRef('closed_weeks', id), { at: Date.now() }); 
+    } catch(e) { console.error(e); }
   };
   
   const weeks = useMemo(() => {
@@ -542,19 +551,21 @@ const MobileView = ({ user, initialRole, onBack }) => {
       if (snap.empty) {
         const batch = writeBatch(db);
         DEFAULT_PRODUCTS_SEED.forEach(p => { 
-          batch.set(doc(getCollectionRef('products')), p); 
+          batch.set(doc(getCollectionRef('products'), p.id.toString()), p); 
         });
-        batch.commit();
+        batch.commit().catch(e => console.error("Erro ao popular BD:", e));
       } else {
         const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
         setProducts(list);
         setCategories(['Todos', ...new Set(list.map(p => p.category).filter(Boolean))]);
       }
-    });
+    }, (err) => { console.error("Erro Produtos:", err); });
+
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => d.data());
       if (list.length > 0) setOrderCounter(Math.max(...list.map(o => o.id || 0)) + 1);
-    });
+    }, (err) => { console.error("Erro Pedidos:", err); });
+
     return () => { unsubProd(); unsubOrders(); };
   }, [user]);
 
@@ -646,6 +657,7 @@ const MobileView = ({ user, initialRole, onBack }) => {
       setView('success'); 
       setTimeout(() => { setCart([]); setSelectedTable(''); setView('tables'); setIsSubmitting(false); }, 2000);
     } catch (e) {
+      console.error(e);
       showToastMsg("Erro ao enviar pedido", "error"); 
       setIsSubmitting(false);
     }
@@ -921,12 +933,32 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   useEffect(() => {
     if (!user) return;
-    const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => { if (!snap.empty) { const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); setProducts(list); } });
+    const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => { 
+      if (snap.empty) { 
+        const batch = writeBatch(db);
+        DEFAULT_PRODUCTS_SEED.forEach(p => {
+          batch.set(doc(getCollectionRef('products'), p.id.toString()), p); 
+        });
+        batch.commit().catch(e => console.error("Erro popular BD:", e));
+        setProducts([]);
+      } else {
+        const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); 
+        setProducts(list); 
+      } 
+    }, (err) => console.error("Erro Snapshot Produtos:", err));
+    
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id); setOrders(list); if (list.length > 0) setOrderCounter(Math.max(...list.map(o => o.id)) + 1);
-    });
-    const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.date || '').localeCompare(a.date || ''))); });
-    const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
+    }, (err) => console.error("Erro Snapshot Pedidos:", err));
+    
+    const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { 
+      setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => (b.date || '').localeCompare(a.date || ''))); 
+    }, (err) => console.error("Erro Snapshot Movimentos:", err));
+    
+    const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { 
+      setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); 
+    }, (err) => console.error("Erro Snapshot Encomendas:", err));
+    
     return () => { unsubProd(); unsubOrders(); unsubMove(); unsubFuture(); };
   }, [user]);
 
@@ -1089,7 +1121,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         setView('pos');
         showToastMsg(`Pedido de ${order.client} carregado para edição.`);
       }
-    } catch (error) { showToastMsg("Erro ao processar ação.", "error"); }
+    } catch (error) { console.error(error); showToastMsg("Erro ao processar ação.", "error"); }
     setActionAuthModal({ show: false, action: null, order: null });
     setActionPassword('');
   };
@@ -1143,7 +1175,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         }
         showToastMsg("Encomenda salva!");
       }
-    } catch(e) { showToastMsg("Erro ao salvar encomenda.", "error"); }
+    } catch(e) { console.error(e); showToastMsg("Erro ao salvar encomenda.", "error"); }
 
     setShowOrderModal(false); 
     setEditingFutureOrder(null);
@@ -1158,7 +1190,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (amountReceived > 0) await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
       setSelectedFutureOrder(null); 
       showToastMsg("Encerrada com sucesso!");
-    } catch(e) { showToastMsg("Erro ao finalizar.", "error"); }
+    } catch(e) { console.error(e); showToastMsg("Erro ao finalizar.", "error"); }
   };
 
   const openWhatsApp = (phone) => {
@@ -1180,28 +1212,47 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const saveSettings = async () => {
     try { 
-      await setDoc(getDocRef('app_state', 'settings'), configForm, { merge: true }); 
+      // Corrige erro excluindo propriedades com valores vazios/indefinidos
+      const cleanData = Object.fromEntries(Object.entries(configForm).filter(([_, v]) => v !== undefined));
+      await setDoc(getDocRef('app_state', 'settings'), cleanData, { merge: true }); 
       showToastMsg("Configurações Salvas!"); 
     } 
-    catch (e) { showToastMsg("Erro ao salvar", "error"); }
+    catch (e) { 
+      console.error("Erro no saveSettings", e); 
+      showToastMsg("Erro ao salvar: " + e.message, "error"); 
+    }
   };
 
   const handleAddCashMovement = async () => {
     if (!movementValue || parseFloat(movementValue) <= 0 || !user) return;
     try { await addDoc(getCollectionRef('cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); showToastMsg("Movimentação registrada!"); } 
-    catch (e) { showToastMsg("Erro ao registrar movimentação", "error"); }
+    catch (e) { console.error(e); showToastMsg("Erro ao registrar", "error"); }
   };
 
   const addNewProduct = async () => { 
     if (!newProdName || !newProdPrice || !user) return; 
-    try { await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: parseFloat(newProdPrice), category: newProdCat, stock: 50, icon: 'burger' }); setNewProdName(''); setNewProdPrice(''); showToastMsg("Produto adicionado!"); }
-    catch(e) { showToastMsg("Erro", "error"); }
+    try { 
+      // Corrige o bug de preço que crashava ao digitar "4,00" em vez de "4.00"
+      const priceNum = parseFloat(newProdPrice.toString().replace(',', '.'));
+      if (isNaN(priceNum)) throw new Error("Preço inválido.");
+      
+      await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: priceNum, category: newProdCat, stock: 50, icon: 'burger' }); 
+      setNewProdName(''); 
+      setNewProdPrice(''); 
+      showToastMsg("Produto adicionado!"); 
+    }
+    catch(e) { console.error("Adicionar produto erro:", e); showToastMsg("Erro: " + e.message, "error"); }
   };
   
   const handleUpdateProduct = async () => { 
     if (!editingProduct || !user) return; 
-    try { await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: editingProduct.price, category: editingProduct.category, stock: editingProduct.stock }); setEditingProduct(null); showToastMsg("Produto atualizado!"); }
-    catch(e) { showToastMsg("Erro", "error"); }
+    try { 
+      const priceNum = parseFloat(editingProduct.price.toString().replace(',', '.'));
+      await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: priceNum, category: editingProduct.category, stock: editingProduct.stock }); 
+      setEditingProduct(null); 
+      showToastMsg("Produto atualizado!"); 
+    }
+    catch(e) { console.error(e); showToastMsg("Erro: " + e.message, "error"); }
   };
   
   const handleDeleteProduct = async () => { 
@@ -1210,9 +1261,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
       msg: 'Excluir este produto permanentemente?',
       action: async () => {
         if (editingProduct?.firestoreId) {
-          await deleteDoc(getDocRef('products', editingProduct.firestoreId)); 
-          setEditingProduct(null);
-          showToastMsg("Produto excluído.");
+          try {
+            await deleteDoc(getDocRef('products', editingProduct.firestoreId)); 
+            setEditingProduct(null);
+            showToastMsg("Produto excluído.");
+          } catch(e) { console.error(e); showToastMsg("Erro excluir", "error");}
         }
         setConfirmState({ isOpen: false, msg: '', action: null });
       }
@@ -1224,9 +1277,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
       isOpen: true,
       msg: 'Deseja excluir esta encomenda?',
       action: async () => {
-        await deleteDoc(getDocRef('future_orders', order.firestoreId));
-        setConfirmState({ isOpen: false, msg: '', action: null });
-        showToastMsg("Encomenda excluída.");
+        try {
+          await deleteDoc(getDocRef('future_orders', order.firestoreId));
+          setConfirmState({ isOpen: false, msg: '', action: null });
+          showToastMsg("Encomenda excluída.");
+        } catch(e) { console.error(e); }
       }
     });
   };
@@ -1815,6 +1870,7 @@ export default function App() {
   const [initialRole, setInitialRole] = useState('');
   const [settings, setSettings] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState(null); // <-- Novo estado para erros de autenticação
 
   // --- ESTADOS DO MODAL DE SENHA ADMINISTRATIVA ---
   const [showAdminAuth, setShowAdminAuth] = useState(false);
@@ -1844,12 +1900,18 @@ export default function App() {
         }
       } catch (e) {
         console.error("Auth error", e);
+        setAuthError(e.code === 'auth/operation-not-allowed' ? 'O "Login Anônimo" (Anonymous) não está ativado no Firebase Authentication.' : e.message);
+        setIsLoading(false);
       }
     };
     initAuth();
     
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Auth state error", error);
+      setAuthError(error.message);
       setIsLoading(false);
     });
     return () => unsubscribe();
@@ -1885,8 +1947,16 @@ export default function App() {
             <Store size={64} />
           </div>
           <h1 className="text-3xl font-black text-center text-slate-800 mb-2">Lanchonete System</h1>
-          <p className="text-center text-slate-500 mb-8 font-medium">Selecione o seu perfil de acesso</p>
+          <p className="text-center text-slate-500 mb-6 font-medium">Selecione o seu perfil de acesso</p>
           
+          {authError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 text-sm font-bold text-center shadow-sm">
+              <AlertTriangle className="mx-auto mb-2" size={24} />
+              Conexão Firebase Recusada:<br/>
+              <span className="font-normal text-xs">{authError}</span>
+            </div>
+          )}
+
           <div className="space-y-4">
             <button 
               onClick={() => { setInitialRole('Garçom / Cliente'); setRole('mobile'); }} 
