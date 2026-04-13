@@ -840,7 +840,7 @@ const MobileView = ({ user, initialRole, onBack }) => {
 // --------------------------------------------------------------------------------
 // SISTEMA POS (CAIXA / GERENTE / CONFIGURAÇÕES)
 // --------------------------------------------------------------------------------
-const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
+const PosView = ({ user, onBack, initialSettings }) => {
   const [view, setView] = useState('pos');
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -1175,7 +1175,10 @@ const PosView = ({ user, onBack, initialSettings, refreshSettings }) => {
   };
 
   const saveSettings = async () => {
-    try { await setDoc(getDocRef('app_state', 'settings'), configForm); refreshSettings(configForm); showToastMsg("Configurações Salvas!"); } 
+    try { 
+      await setDoc(getDocRef('app_state', 'settings'), configForm, { merge: true }); 
+      showToastMsg("Configurações Salvas!"); 
+    } 
     catch (e) { showToastMsg("Erro ao salvar", "error"); }
   };
 
@@ -1809,6 +1812,24 @@ export default function App() {
   const [settings, setSettings] = useState({});
   const [isLoading, setIsLoading] = useState(true);
 
+  // --- ESTADOS DO MODAL DE SENHA ADMINISTRATIVA ---
+  const [showAdminAuth, setShowAdminAuth] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminError, setAdminError] = useState('');
+
+  const handleAdminLogin = () => {
+    const currentPass = settings?.posPassword || '1234';
+    if (adminPasswordInput === currentPass) {
+      setInitialRole('Gerência');
+      setRole('pos');
+      setShowAdminAuth(false);
+      setAdminPasswordInput('');
+      setAdminError('');
+    } else {
+      setAdminError('Senha incorreta! Tente novamente.');
+    }
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -1830,17 +1851,17 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // SINCRONIZAÇÃO EM TEMPO REAL DAS CONFIGURAÇÕES PARA CORRIGIR O SALVAMENTO
   useEffect(() => {
     if (!user) return;
-    const fetchSettings = async () => {
-      try {
-        const snap = await getDoc(getDocRef('app_state', 'settings'));
-        if (snap.exists()) setSettings(snap.data());
-      } catch (e) {
-        console.error("Erro ao carregar configurações", e);
+    const unsubSettings = onSnapshot(getDocRef('app_state', 'settings'), (snap) => {
+      if (snap.exists()) {
+        setSettings(snap.data());
       }
-    };
-    fetchSettings();
+    }, (error) => {
+      console.error("Erro ao sincronizar configurações", error);
+    });
+    return () => unsubSettings();
   }, [user]);
 
   if (isLoading) {
@@ -1854,7 +1875,7 @@ export default function App() {
 
   if (!role) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-100 p-4">
+      <div className="h-screen flex items-center justify-center bg-slate-100 p-4 relative">
         <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl border border-slate-200">
           <div className="flex justify-center mb-6 text-blue-600">
             <Store size={64} />
@@ -1878,7 +1899,11 @@ export default function App() {
             </button>
 
             <button 
-              onClick={() => { setInitialRole('Gerência'); setRole('pos'); }} 
+              onClick={() => { 
+                setShowAdminAuth(true); 
+                setAdminPasswordInput(''); 
+                setAdminError(''); 
+              }} 
               className="w-full flex items-center p-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl transition-all shadow-lg group"
             >
               <div className="bg-blue-500 text-white p-3 rounded-xl mr-4 group-hover:scale-110 transition-transform shadow-md">
@@ -1892,6 +1917,38 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* MODAL DE SENHA DO PAINEL ADMINISTRATIVO */}
+        {showAdminAuth && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 border-t-4 border-blue-600">
+              <div className="flex justify-center mb-4 text-blue-600">
+                <div className="bg-blue-50 p-4 rounded-full">
+                  <Lock size={40} />
+                </div>
+              </div>
+              <h3 className="text-xl font-black text-slate-800 mb-2 text-center">Acesso Gerencial</h3>
+              <p className="text-sm text-slate-500 mb-6 text-center font-medium">Digite a Senha Caixa para acessar o painel (Padrão: 1234).</p>
+              
+              <input 
+                type="password" 
+                autoFocus 
+                placeholder="Senha de Acesso" 
+                className="w-full border-2 border-slate-200 p-4 rounded-xl text-center text-xl font-bold tracking-widest outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all mb-2" 
+                value={adminPasswordInput} 
+                onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminError(''); }} 
+                onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()} 
+              />
+              
+              {adminError && <p className="text-red-500 text-sm font-bold text-center animate-in slide-in-from-top-1">{adminError}</p>}
+              
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowAdminAuth(false)} className="flex-1 py-3.5 text-slate-500 bg-slate-100 font-bold hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button>
+                <button onClick={handleAdminLogin} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/30">Acessar</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
