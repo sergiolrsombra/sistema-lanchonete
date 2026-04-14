@@ -43,7 +43,7 @@ const getCollectionRef = (colName) => collection(db, 'artifacts', appId, 'public
 const getDocRef = (colName, docId) => doc(db, 'artifacts', appId, 'public', 'data', colName, docId);
 
 // --- CONFIGURAÇÃO GEMINI API ---
-const apiKey = ""; 
+const apiKey = "AIzaSyAX2-jXAiDcBAVqAYou9pX1W1GqLnaC8UQ"; 
 
 const callGemini = async (prompt) => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
@@ -69,7 +69,7 @@ const callGemini = async (prompt) => {
   }
 };
 
-// --- DADOS PADRÃO ---
+// --- DADOS PADRÃO E HELPERS GERAIS ---
 const DEFAULT_PRODUCTS_SEED = [
   { id: 1, name: 'Café 210ml', price: 4.00, category: 'Bebidas', stock: 100, icon: 'drink' },
   { id: 2, name: 'Tapioca', price: 4.00, category: 'Tapiocas', stock: 50, icon: 'burger' },
@@ -84,7 +84,22 @@ const DEFAULT_PRODUCTS_SEED = [
 const CATEGORIES = ['Tapiocas', 'Cuscuz', 'Pão', 'Salgados e Caldos', 'Bolos e Doces', 'Bebidas', 'Diversos', 'Adicionais'];
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
 
-// --- HELPERS E COMPONENTES COMPARTILHADOS ---
+// Utilitário para formatar ISO Data com Fuso Horário Local exato
+const getLocalISOString = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+// Purificador de Dados para evitar que undefined/NaN quebrem a gravação no Firebase
+const sanitizePayload = (obj) => {
+  return JSON.parse(JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'number' && isNaN(value)) return 0;
+    if (value === undefined) return null;
+    return value;
+  }));
+};
+
 const formatMoney = (val) => {
   const n = typeof val === 'string' ? parseFloat(val) : val;
   if (isNaN(n)) return 'R$ 0,00';
@@ -93,20 +108,23 @@ const formatMoney = (val) => {
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '--/--';
-  const parts = dateStr.split('-');
+  const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+  const parts = cleanDate.split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
-  return dateStr;
+  return cleanDate;
 };
 
 const getTodayStr = () => {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
 const getWeekId = (dateStr) => {
   if (!dateStr) return 'sem-data';
   try {
-    const d = new Date(dateStr + 'T12:00:00');
+    const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+    const d = new Date(cleanDate + 'T12:00:00');
     const onejan = new Date(d.getFullYear(), 0, 1);
     const millis = d.getTime() - onejan.getTime();
     const week = Math.ceil((((millis / 86400000) + onejan.getDay() + 1) / 7));
@@ -115,22 +133,21 @@ const getWeekId = (dateStr) => {
 };
 
 const calcItemTotal = (item) => {
-  const subTotal = (item.subItems || []).reduce((acc, sub) => acc + (sub.price * sub.qty), 0);
-  return (item.price + subTotal) * item.qty;
+  const subTotal = (item.subItems || []).reduce((acc, sub) => acc + (Number(sub.price) * Number(sub.qty)), 0);
+  return (Number(item.price) + subTotal) * Number(item.qty);
 };
 
 const getStockDeductions = (cartArray) => {
   const deductions = {};
   cartArray.forEach(item => {
-    deductions[item.id] = (deductions[item.id] || 0) + item.qty;
+    deductions[item.id] = (deductions[item.id] || 0) + Number(item.qty);
     item.subItems?.forEach(sub => {
-      deductions[sub.id] = (deductions[sub.id] || 0) + (sub.qty * item.qty);
+      deductions[sub.id] = (deductions[sub.id] || 0) + (Number(sub.qty) * Number(item.qty));
     });
   });
   return deductions;
 };
 
-// --- FUNÇÃO DE IMPRESSÃO VERSÁTIL ---
 const handlePrint = (order, settings, type = 'customer') => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
@@ -349,7 +366,7 @@ const CashControl = ({ user, orders }) => {
     const valPix = parseFloat(pix) || 0, valCash = parseFloat(cash) || 0, valCard = parseFloat(card) || 0; 
     setIsSubmitting(true); 
     try {
-      await addDoc(getCollectionRef('records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: Timestamp.now() }); 
+      await addDoc(getCollectionRef('records_v2'), sanitizePayload({ date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: getLocalISOString() })); 
       setPix(''); setCash(''); setCard(''); 
       setToast({ msg: "Salvo com sucesso!", type: 'success' });
     } catch(e) { setToast({ msg: "Erro ao salvar.", type: 'error' }); }
@@ -383,7 +400,7 @@ const CashControl = ({ user, orders }) => {
       if (isClosed) {
         await deleteDoc(getDocRef('closed_weeks', id)); 
       } else {
-        await setDoc(getDocRef('closed_weeks', id), { at: Date.now() }); 
+        await setDoc(getDocRef('closed_weeks', id), { at: getLocalISOString() }); 
       }
     } catch(e) { console.error(e); }
   };
@@ -396,10 +413,10 @@ const CashControl = ({ user, orders }) => {
         groups[w] = { id: w, records: [], total: 0, totalPix: 0, totalCash: 0, totalCard: 0, startDate: rec.date, endDate: rec.date }; 
       }
       groups[w].records.push(rec); 
-      groups[w].total += rec.total; 
-      groups[w].totalPix += rec.pix; 
-      groups[w].totalCash += rec.cash; 
-      groups[w].totalCard += rec.card; 
+      groups[w].total += Number(rec.total) || 0; 
+      groups[w].totalPix += Number(rec.pix) || 0; 
+      groups[w].totalCash += Number(rec.cash) || 0; 
+      groups[w].totalCard += Number(rec.card) || 0; 
       if (rec.date < groups[w].startDate) groups[w].startDate = rec.date; 
       if (rec.date > groups[w].endDate) groups[w].endDate = rec.date;
     }); 
@@ -414,10 +431,10 @@ const CashControl = ({ user, orders }) => {
       if (!groups[m]) {
         groups[m] = { id: m, total: 0, totalPix: 0, totalCash: 0, totalCard: 0 };
       }
-      groups[m].total += (rec.total || 0);
-      groups[m].totalPix += (rec.pix || 0);
-      groups[m].totalCash += (rec.cash || 0);
-      groups[m].totalCard += (rec.card || 0);
+      groups[m].total += (Number(rec.total) || 0);
+      groups[m].totalPix += (Number(rec.pix) || 0);
+      groups[m].totalCash += (Number(rec.cash) || 0);
+      groups[m].totalCard += (Number(rec.card) || 0);
     });
     return Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
   }, [records]);
@@ -430,10 +447,10 @@ const CashControl = ({ user, orders }) => {
       if (!groups[y]) {
         groups[y] = { id: y, total: 0, totalPix: 0, totalCash: 0, totalCard: 0 };
       }
-      groups[y].total += (rec.total || 0);
-      groups[y].totalPix += (rec.pix || 0);
-      groups[y].totalCash += (rec.cash || 0);
-      groups[y].totalCard += (rec.card || 0);
+      groups[y].total += (Number(rec.total) || 0);
+      groups[y].totalPix += (Number(rec.pix) || 0);
+      groups[y].totalCash += (Number(rec.cash) || 0);
+      groups[y].totalCard += (Number(rec.card) || 0);
     });
     return Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
   }, [records]);
@@ -838,11 +855,11 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       Object.entries(deductions).forEach(([prodId, totalQty]) => {
         const pItem = products.find(p => p.id === parseInt(prodId));
         if (pItem && pItem.firestoreId) {
-          batch.update(getDocRef('products', pItem.firestoreId), { stock: Math.max(0, pItem.stock - totalQty) });
+          batch.update(getDocRef('products', pItem.firestoreId), { stock: Math.max(0, (Number(pItem.stock) || 0) - Number(totalQty)) });
         }
       });
 
-      const orderData = { 
+      const orderData = sanitizePayload({ 
         id: orderCounter, 
         client: customerName,
         phone: customerPhone,
@@ -854,10 +871,10 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         paymentStatus: 'ABERTO', 
         kitchenStatus: 'Pendente', 
         method: 'Aguardando', 
-        date: new Date().toISOString(), 
+        date: getLocalISOString(), 
         time: new Date().toLocaleTimeString().slice(0, 5), 
         origin: 'WhatsApp' 
-      };
+      });
 
       await addDoc(getCollectionRef('orders'), orderData);
       await batch.commit();
@@ -891,7 +908,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         setView('login'); 
         setIsSubmitting(false); 
       }, 3000);
-    } catch (e) { showToastMsg("Erro ao enviar pedido", "error"); setIsSubmitting(false); }
+    } catch (e) { showToastMsg(`Erro ao enviar pedido: ${e.message}`, "error"); setIsSubmitting(false); }
   };
 
   const handleAiSuggestion = async () => {
@@ -906,7 +923,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
 
   const filtered = products.filter(p => (selectedCategory === 'Todos' || p.category === selectedCategory) && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
   const total = getCartTotal(); 
-  const count = cart.reduce((a, i) => a + i.qty, 0);
+  const count = cart.reduce((a, i) => a + Number(i.qty || 0), 0);
 
   if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1><p className="mt-4 text-green-100 text-center">Verifique o seu WhatsApp para concluir o pagamento.</p></div>;
 
@@ -1340,56 +1357,57 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const finalizeOrder = async (client = 'Balcão', status = 'PAGO', overridePayments = null) => {
     if (!user) return;
-    const paymentsToProcess = overridePayments || partialPayments;
-    
-    // Lógica para divisão de conta (Partial Payment via Guest)
-    const isPartialPayment = payingGuest !== 'Mesa Completa';
-    
-    const safeTabItems = selectedTabToSettle?.items || [];
-    const itemsToPay = selectedTabToSettle 
-        ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : safeTabItems) 
-        : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cart);
-    
-    const itemsToKeep = selectedTabToSettle 
-        ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : [])
-        : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
-
-    const totalOrder = itemsToPay.reduce((acc, item) => acc + calcItemTotal(item), 0);
-
-    if (status === 'PAGO') {
-      const paidTotal = paymentsToProcess.reduce((acc, p) => acc + p.value, 0);
-      if (paidTotal < totalOrder - 0.01) { showToastMsg("Pagamento insuficiente.", "error"); return; }
-    }
-
-    const nowISO = new Date().toISOString();
-
-    const deductStock = async (itemsToDeduct) => {
-      const batch = writeBatch(db);
-      const deductions = getStockDeductions(itemsToDeduct);
-      let hasUpdates = false;
-      Object.entries(deductions).forEach(([pid, qty]) => {
-        const prod = products.find(p => p.id === parseInt(pid));
-        if (prod?.firestoreId) {
-          batch.update(getDocRef('products', prod.firestoreId), { stock: Math.max(0, prod.stock - qty) });
-          hasUpdates = true;
-        }
-      });
-      if (hasUpdates) await batch.commit();
-    };
-
     try {
+      const paymentsToProcess = overridePayments || partialPayments;
+      const isPartialPayment = payingGuest !== 'Mesa Completa';
+      
+      const safeTabItems = selectedTabToSettle?.items || [];
+      const itemsToPay = selectedTabToSettle 
+          ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : safeTabItems) 
+          : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cart);
+      
+      const itemsToKeep = selectedTabToSettle 
+          ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : [])
+          : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
+
+      const totalOrder = itemsToPay.reduce((acc, item) => acc + calcItemTotal(item), 0);
+
+      if (status === 'PAGO') {
+        const paidTotal = paymentsToProcess.reduce((acc, p) => acc + p.value, 0);
+        if (paidTotal < totalOrder - 0.01) { showToastMsg("Pagamento insuficiente.", "error"); return; }
+      }
+
+      const nowISO = getLocalISOString();
+
+      const deductStock = async (itemsToDeduct) => {
+        const batch = writeBatch(db);
+        const deductions = getStockDeductions(itemsToDeduct);
+        let hasUpdates = false;
+        Object.entries(deductions).forEach(([pid, qty]) => {
+          const prod = products.find(p => p.id === parseInt(pid));
+          if (prod?.firestoreId) {
+            const currentStock = Number(prod.stock) || 0;
+            const safeQty = Number(qty) || 0;
+            batch.update(getDocRef('products', prod.firestoreId), { stock: Math.max(0, currentStock - safeQty) });
+            hasUpdates = true;
+          }
+        });
+        if (hasUpdates) await batch.commit();
+      };
+
       if (status === 'ABERTO') {
         const existing = orders.find(o => o.client === client && o.paymentStatus === 'ABERTO');
         if (existing) {
-          await updateDoc(getDocRef('orders', existing.firestoreId), { 
+          const updatePayload = sanitizePayload({ 
             items: [...existing.items, ...cart], 
             total: existing.total + getCartTotal(), 
             kitchenStatus: 'Pendente', 
             updatedAt: nowISO 
           });
+          await updateDoc(getDocRef('orders', existing.firestoreId), updatePayload);
           showToastMsg(`Comanda de ${client} atualizada!`);
         } else {
-          await addDoc(getCollectionRef('orders'), { 
+          const openPayload = sanitizePayload({ 
             id: orderCounter, 
             items: cart, 
             total: getCartTotal(), 
@@ -1403,6 +1421,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             time: new Date().toLocaleTimeString().slice(0, 5), 
             origin: 'Caixa' 
           });
+          await addDoc(getCollectionRef('orders'), openPayload);
           showToastMsg(`Comanda aberta para ${client}!`);
         }
         await deductStock(cart);
@@ -1420,8 +1439,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
       let received = cashPay && cashPay.receivedValue !== undefined ? cashPay.receivedValue : totalOrder;
       const change = Math.max(0, received - totalOrder);
 
-      const orderData = { 
-        id: selectedTabToSettle ? selectedTabToSettle.id : orderCounter, 
+      const orderData = sanitizePayload({ 
+        id: selectedTabToSettle ? (Number(selectedTabToSettle.id) || orderCounter) : orderCounter, 
         items: itemsToPay, 
         total: totalOrder, 
         status: 'Pago', 
@@ -1431,12 +1450,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
         date: selectedTabToSettle?.date || nowISO, 
         receivedValue: cashPay ? received : null,
         changeValue: change > 0 ? change : null
-      };
+      });
 
       if (selectedTabToSettle) {
         if (isPartialPayment && itemsToKeep.length > 0) {
-          // Pagamento de apenas 1 Pessoa: cria recibo dela e mantém a mesa aberta
-          await addDoc(getCollectionRef('orders'), { 
+          const partialTabPayload = sanitizePayload({
             ...orderData, 
             origin: 'Caixa (Parcial)', 
             kitchenStatus: 'Pronto', 
@@ -1444,15 +1462,16 @@ const PosView = ({ user, onBack, initialSettings }) => {
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
             paidAt: nowISO
           });
+          await addDoc(getCollectionRef('orders'), partialTabPayload);
           
-          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
+          const keepTabPayload = sanitizePayload({
             items: itemsToKeep,
             total: itemsToKeep.reduce((acc, item) => acc + calcItemTotal(item), 0),
             updatedAt: nowISO 
           });
+          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), keepTabPayload);
         } else {
-          // Pagamento total da mesa
-          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
+          const fullTabPayload = sanitizePayload({
             paymentStatus: 'PAGO', 
             status: 'Pago',
             method: methodString, 
@@ -1461,11 +1480,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
             receivedValue: orderData.receivedValue,
             changeValue: orderData.changeValue
           });
+          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), fullTabPayload);
         }
       } else {
-        // Pagamento Direto no POS (Novo Pedido)
         if (isPartialPayment && itemsToKeep.length > 0) {
-          await addDoc(getCollectionRef('orders'), { 
+          const partialPosPayload = sanitizePayload({
             ...orderData, 
             origin: 'Caixa (Parcial)', 
             kitchenStatus: 'Pendente', 
@@ -1473,10 +1492,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
             paidAt: nowISO
           });
+          await addDoc(getCollectionRef('orders'), partialPosPayload);
           await deductStock(itemsToPay);
           
           setFinalizedOrder(orderData);
-          setCart(itemsToKeep); // Mantém os restantes no carrinho do POS
+          setCart(itemsToKeep); 
           const remainingGuests = [...new Set(itemsToKeep.map(i => i.guest || 'Pessoa 1'))];
           setGuestList(remainingGuests.length > 0 ? remainingGuests : ['Pessoa 1']);
           setCurrentGuest(remainingGuests.length > 0 ? remainingGuests[0] : 'Pessoa 1');
@@ -1484,9 +1504,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
           setPayingGuest('Mesa Completa');
           setShowPaymentModal(false);
           showToastMsg(`Venda finalizada para ${payingGuest}! O restante continua no carrinho.`);
-          return; // Previne o limpa-carrinho global abaixo
+          return; 
         } else {
-          await addDoc(getCollectionRef('orders'), { 
+          const fullPosPayload = sanitizePayload({
             ...orderData, 
             origin: 'Caixa', 
             kitchenStatus: 'Pendente', 
@@ -1494,6 +1514,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
             paidAt: nowISO
           });
+          await addDoc(getCollectionRef('orders'), fullPosPayload);
           await deductStock(itemsToPay);
         }
       }
@@ -1507,10 +1528,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
       setCustomerName('');
       setPayingGuest('Mesa Completa');
       setShowPaymentModal(false);
-      showToastMsg("Venda finalizada!");
+      showToastMsg("Venda finalizada com sucesso!");
     } catch (e) { 
-      console.error(e); 
-      showToastMsg(`Erro ao salvar venda: ${e.message}`, "error"); 
+      console.error("Erro crítico na finalização:", e); 
+      showToastMsg(`Erro no sistema de pagamento: ${e.message}`, "error"); 
     }
   };
 
@@ -1534,7 +1555,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       Object.entries(restores).forEach(([prodId, totalQty]) => {
         const pItem = products.find(p => p.id === parseInt(prodId));
         if (pItem && pItem.firestoreId) {
-          batch.update(getDocRef('products', pItem.firestoreId), { stock: pItem.stock + totalQty });
+          batch.update(getDocRef('products', pItem.firestoreId), { stock: Number(pItem.stock || 0) + Number(totalQty) });
         }
       });
       const orderRef = getDocRef('orders', order.firestoreId);
@@ -1594,25 +1615,25 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const totalVal = parseFloat(orderTotalValue) || 0;
     const signalVal = parseFloat(orderSignal) || 0;
 
-    const orderData = {
+    const orderData = sanitizePayload({
       client: orderClient,
       phone: orderPhone,
-      deliveryDate: orderDate || new Date().toISOString().split('T')[0],
+      deliveryDate: orderDate || getTodayStr(),
       deliveryTime: orderTime || '12:00',
       description: orderObs,
       total: totalVal,
       signal: signalVal,
       signalMethod: orderSignalMethod
-    };
+    });
 
     try {
       if (editingFutureOrder) {
-        await updateDoc(getDocRef('future_orders', editingFutureOrder.firestoreId), { ...orderData, updatedAt: new Date().toISOString() });
+        await updateDoc(getDocRef('future_orders', editingFutureOrder.firestoreId), { ...orderData, updatedAt: getLocalISOString() });
         showToastMsg("Encomenda atualizada com sucesso!");
       } else {
-        await addDoc(getCollectionRef('future_orders'), { ...orderData, status: 'Pendente', createdAt: new Date().toISOString() });
+        await addDoc(getCollectionRef('future_orders'), { ...orderData, status: 'Pendente', createdAt: getLocalISOString() });
         if (signalVal > 0) {
-          await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Sinal: ${orderClient}`, total: signalVal, status: 'Pago', paymentStatus: 'PAGO', method: orderSignalMethod, payments: [{ method: orderSignalMethod, value: signalVal }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Sinal Encomenda', price: signalVal, qty: 1 }] });
+          await addDoc(getCollectionRef('orders'), sanitizePayload({ id: orderCounter + 1, client: `Sinal: ${orderClient}`, total: signalVal, status: 'Pago', paymentStatus: 'PAGO', method: orderSignalMethod, payments: [{ method: orderSignalMethod, value: signalVal }], date: getLocalISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Sinal Encomenda', price: signalVal, qty: 1 }] }));
         }
         showToastMsg("Encomenda salva!");
       }
@@ -1627,8 +1648,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
     if (!selectedFutureOrder) return;
     try {
       const amountReceived = parseFloat(settleValue) || 0;
-      await updateDoc(getDocRef('future_orders', selectedFutureOrder.firestoreId), { status: 'Concluído', finalPayment: amountReceived, finalPaymentMethod: settleMethod, completedAt: new Date().toISOString() });
-      if (amountReceived > 0) await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
+      await updateDoc(getDocRef('future_orders', selectedFutureOrder.firestoreId), sanitizePayload({ status: 'Concluído', finalPayment: amountReceived, finalPaymentMethod: settleMethod, completedAt: getLocalISOString() }));
+      if (amountReceived > 0) await addDoc(getCollectionRef('orders'), sanitizePayload({ id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: getLocalISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] }));
       setSelectedFutureOrder(null); 
       showToastMsg("Encerrada com sucesso!");
     } catch(e) { console.error(e); showToastMsg("Erro ao finalizar.", "error"); }
@@ -1654,7 +1675,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const saveSettings = async () => {
     try { 
       const cleanData = Object.fromEntries(Object.entries(configForm).filter(([_, v]) => v !== undefined));
-      await setDoc(getDocRef('app_state', 'settings'), cleanData, { merge: true }); 
+      await setDoc(getDocRef('app_state', 'settings'), sanitizePayload(cleanData), { merge: true }); 
       showToastMsg("Configurações Salvas!"); 
     } 
     catch (e) { 
@@ -1665,7 +1686,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const handleAddCashMovement = async () => {
     if (!movementValue || parseFloat(movementValue) <= 0 || !user) return;
-    try { await addDoc(getCollectionRef('cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); showToastMsg("Movimentação registrada!"); } 
+    try { await addDoc(getCollectionRef('cash_movements'), sanitizePayload({ type: movementType, value: parseFloat(movementValue), description: movementDesc, date: getLocalISOString(), createdAt: Timestamp.now() })); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); showToastMsg("Movimentação registrada!"); } 
     catch (e) { console.error(e); showToastMsg("Erro ao registrar", "error"); }
   };
 
@@ -1674,7 +1695,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     try { 
       const priceNum = parseFloat(newProdPrice.toString().replace(',', '.'));
       if (isNaN(priceNum)) throw new Error("Preço inválido.");
-      await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: priceNum, category: newProdCat, stock: 50, icon: 'burger' }); 
+      await addDoc(getCollectionRef('products'), sanitizePayload({ id: Date.now(), name: newProdName, price: priceNum, category: newProdCat, stock: 50, icon: 'burger' })); 
       setNewProdName(''); 
       setNewProdPrice(''); 
       showToastMsg("Produto adicionado!"); 
@@ -1686,7 +1707,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     if (!editingProduct || !user) return; 
     try { 
       const priceNum = parseFloat(editingProduct.price.toString().replace(',', '.'));
-      await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: priceNum, category: editingProduct.category, stock: editingProduct.stock }); 
+      await updateDoc(getDocRef('products', editingProduct.firestoreId), sanitizePayload({ name: editingProduct.name, price: priceNum, category: editingProduct.category, stock: Number(editingProduct.stock) || 0 })); 
       setEditingProduct(null); 
       showToastMsg("Produto atualizado!"); 
     }
@@ -1767,10 +1788,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (!o || o.paymentStatus !== 'PAGO' || !o.date) return false;
       try {
         const orderDate = new Date(o.date);
+        if (isNaN(orderDate.getTime())) return false; // Proteção contra datas inválidas
         if (reportMode === 'daily') {
             return orderDate.getDate() === reportDate.getDate() && orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
         } else if (reportMode === 'weekly') {
-            return getWeekId(o.date.split('T')[0] || o.date) === getWeekId(reportDate.toISOString().split('T')[0]);
+            const safeDate = o.date.includes('T') ? o.date.split('T')[0] : o.date;
+            const safeReportDate = reportDate.toISOString().split('T')[0];
+            return getWeekId(safeDate) === getWeekId(safeReportDate);
         } else {
             return orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
         }
@@ -1800,11 +1824,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const totalSangria = filteredMovements.filter(m => m.type === 'sangria').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
   
   const orderMetrics = useMemo(() => {
-    const now = new Date(); const today = now.toISOString().split('T')[0]; const cm = today.slice(0, 7); const cy = today.slice(0, 4); 
+    const todayStr = getTodayStr(); 
+    const cm = todayStr.slice(0, 7); 
+    const cy = todayStr.slice(0, 4); 
     const getWeek = (d) => { const date = new Date(d); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7); const w1 = new Date(date.getFullYear(), 0, 4); return 1 + Math.round(((date.getTime() - w1.getTime()) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7); }; 
-    const cw = getWeek(now); let day = 0, week = 0, month = 0, year = 0; 
+    const cw = getWeek(new Date()); let day = 0, week = 0, month = 0, year = 0; 
     futureOrders.forEach(o => {
-      if (o.status === 'Cancelado') return; const d = o.deliveryDate; const val = Number(o.total) || 0; if (d === today) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d)) === cw && d.startsWith(cy)) week += val;
+      if (o.status === 'Cancelado') return; const d = o.deliveryDate; const val = Number(o.total) || 0; if (d === todayStr) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d)) === cw && d.startsWith(cy)) week += val;
     });
     return { day, week, month, year };
   }, [futureOrders]);
@@ -2030,229 +2056,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   <span className="text-3xl font-black text-blue-600">R$ {cartTotal.toFixed(2)}</span>
                 </div>
                 <button onClick={() => { if (cart.length > 0) { setSelectedTabToSettle(null); setCustomerName(''); setPartialPayments([]); setPaymentInputValue(''); setPayingGuest('Mesa Completa'); setShowPaymentModal(true); } }} disabled={cart.length === 0} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50 transition-all shadow-lg shadow-slate-900/20 active:scale-95">PAGAR AGORA</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {view === 'orders' && (
-          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
-            <header className="mb-8 flex justify-between items-center"><h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><Cake size={32} className="text-pink-600" /> Encomendas e Bolos</h1><button onClick={() => { setEditingFutureOrder(null); setOrderClient(''); setOrderPhone(''); setOrderObs(''); setOrderSignal(''); setOrderTotalValue(''); setShowOrderModal(true); }} className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-600/20 flex items-center gap-2 active:scale-95 transition-all"><PlusCircle size={20} /> Nova Encomenda</button></header>
-            <div className="grid grid-cols-4 gap-4 mb-8">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Hoje</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.day)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Semana</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.week)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Mês</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.month)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Ano</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.year)}</div></div>
-            </div>
-            <div className="space-y-4">{futureOrders.map(order => (
-              <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all cursor-pointer relative group">
-                {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
-                <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800">{order.client}</h3><div className="flex items-center gap-2 mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button></div></div><div className="text-right mr-10 md:mr-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição da Produção</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description || 'Sem detalhes.'}</p></div>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Edit3 size={14}/> Editar</button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteFutureOrder(order); }} className="text-xs text-red-500 hover:text-red-700 font-bold z-10 px-4 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {futureOrders.length === 0 && <div className="text-center text-slate-400 py-10 font-medium">Nenhuma encomenda registrada.</div>}
-            </div>
-          </div>
-        )}
-
-        {view === 'tabs' && (
-          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
-            <h1 className="text-3xl font-bold mb-8 text-slate-800 flex items-center gap-3"><ClipboardList size={32} className="text-indigo-600" /> Comandas Abertas</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {orders.filter(o => o.paymentStatus === 'ABERTO').map(o => (
-                <div key={o.id} className="bg-white p-5 rounded-2xl shadow-sm border border-indigo-100 relative overflow-hidden group hover:shadow-md transition-shadow">
-                  {o.origin === 'Mobile' || o.origin === 'WhatsApp' ? <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold shadow-sm">App/Site</div> : null}
-                  <div className="font-bold text-xl text-indigo-900 mb-1">{o.client}</div>
-                  <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block font-bold mb-3">Origem: {o.waiter || 'Balcão'}</div>
-                  <div className="bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
-                    <div className="text-sm font-bold text-slate-700 mb-1">{o.items ? o.items.length : 0} Lanches/Bebidas</div>
-                    <div className="text-2xl font-black text-slate-800">R$ {Number(o.total).toFixed(2)}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setSelectedTabToSettle(o); setPartialPayments([]); setPaymentInputValue(''); setPayingGuest('Mesa Completa'); setShowPaymentModal(true); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-sm transition-colors shadow-sm active:scale-95">Receber</button>
-                    <button onClick={() => setActionAuthModal({ show: true, action: 'edit', order: o })} className="bg-blue-50 text-blue-600 hover:bg-blue-100 p-3 rounded-xl transition-colors" title="Editar Itens"><Edit3 size={18} /></button>
-                    <button onClick={() => setActionAuthModal({ show: true, action: 'cancel', order: o })} className="bg-red-50 text-red-500 hover:bg-red-100 p-3 rounded-xl transition-colors" title="Cancelar Comanda"><Trash2 size={18} /></button>
-                  </div>
-                </div>
-              ))}
-              {orders.filter(o => o.paymentStatus === 'ABERTO').length === 0 && (
-                <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhuma comanda aberta no momento. O salão está tranquilo.</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {view === 'kitchen' && (
-          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
-            <h1 className="text-3xl font-bold mb-8 text-slate-800 flex items-center gap-3"><ChefHat size={32} className="text-orange-500" /> Painel da Cozinha</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {orders.filter(o => o.kitchenStatus === 'Pendente').map(o => (
-                <div key={o.id} className="bg-white border-l-4 border-orange-500 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <span className="font-bold text-lg text-slate-800 block leading-tight">{o.client}</span>
-                      <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded">Pedido #{String(o.id).slice(0, 4)}</span>
-                    </div>
-                    <span className="text-sm font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded"><Clock size={14}/> {o.time}</span>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-100 min-h-[100px]">
-                    <ul className="text-sm space-y-2">
-                      {o.items && o.items.map((i, idx) => (
-                        <li key={idx} className="flex flex-col gap-1 border-b border-slate-200 last:border-0 pb-3 last:pb-0">
-                          <div className="flex gap-2 items-start">
-                            <span className="font-black text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded text-xs">{i.qty}x</span> 
-                            <span className="font-bold text-slate-700">{i.name} {i.guest && !o.client.includes(i.guest) && <span className="text-xs font-normal text-slate-500">({i.guest})</span>}</span>
-                          </div>
-                          
-                          {i.subItems && i.subItems.length > 0 && (
-                            <div className="pl-7 space-y-1">
-                              {i.subItems.map((sub, sIdx) => (
-                                <div key={sIdx} className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded inline-block">
-                                  + {sub.qty * i.qty}x {sub.name}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          {i.obs && (
-                            <div className="ml-7 mt-1 text-xs font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1 rounded inline-block">
-                              OBS: {i.obs}
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setKitchenExpandedOrder(o)} className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold shadow-sm transition-colors hover:bg-slate-50 flex items-center justify-center gap-2"><Maximize size={18}/> Ampliar</button>
-                    <button onClick={() => {
-                       updateDoc(getDocRef('orders', o.firestoreId), { kitchenStatus: 'Pronto' });
-                       showToastMsg(`Pedido #${String(o.id).slice(0,4)} finalizado na cozinha.`);
-                    }} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 transition-colors active:scale-95 flex items-center justify-center gap-2"><CheckSquare size={18}/> Pronto</button>
-                  </div>
-                </div>
-              ))}
-              {orders.filter(o => o.kitchenStatus === 'Pendente').length === 0 && (
-                <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhum pedido pendente na cozinha.</div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {view === 'cash' && <CashControl user={user} orders={orders} />}
-
-        {view === 'admin' && (
-          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
-            <header className="mb-8 flex justify-between items-center">
-              <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><LayoutDashboard size={32} className="text-purple-600" /> Dashboard & Gestão</h1>
-              <div className="flex gap-3">
-                <button onClick={() => setShowCashMovementModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
-                <div className="flex bg-white p-1.5 rounded-xl shadow-sm border border-slate-200">
-                  <button onClick={() => setReportMode('daily')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'daily' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Diário</button>
-                  <button onClick={() => setReportMode('weekly')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'weekly' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Semanal</button>
-                  <button onClick={() => setReportMode('monthly')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'monthly' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Mensal</button>
-                </div>
-              </div>
-            </header>
-            
-            <div className="mb-8 flex justify-between items-center bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
-              <div className="flex items-center gap-4">
-                <button onClick={() => reportMode === 'daily' ? changeDate(-1) : reportMode === 'weekly' ? changeWeek(-1) : changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronLeft size={24} className="text-slate-600" /></button>
-                <div className="flex items-center gap-3"><Calendar size={24} className="text-blue-600" />
-                  <span className="text-xl font-bold text-slate-800 capitalize min-w-[200px] text-center">
-                    {reportMode === 'daily' ? reportDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) : 
-                     reportMode === 'weekly' ? `Semana ${getWeekId(reportDate.toISOString().split('T')[0]).split('-W')[1]} de ${reportDate.getFullYear()}` :
-                     reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                  </span>
-                </div>
-                <button onClick={() => reportMode === 'daily' ? changeDate(1) : reportMode === 'weekly' ? changeWeek(1) : changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronRight size={24} className="text-slate-600" /></button>
-              </div>
-              <button onClick={() => setReportDate(new Date())} className="text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 transition-colors">Voltar para Hoje</button>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-6 bg-gradient-to-br from-emerald-50 to-green-50 rounded-3xl border border-emerald-100 flex items-center justify-between shadow-sm"><div><div className="text-emerald-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowUpCircle size={18} /> Entrada Caixa (Suprimento)</div><div className="text-4xl font-black text-slate-800">{formatMoney(totalSuprimento)}</div></div><div className="bg-white p-4 rounded-2xl text-emerald-600 shadow-sm border border-emerald-100"><Coins size={32} /></div></div>
-                <div className="p-6 bg-gradient-to-br from-red-50 to-rose-50 rounded-3xl border border-red-100 flex items-center justify-between shadow-sm"><div><div className="text-red-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowDownCircle size={18} /> Saída Caixa (Sangria)</div><div className="text-4xl font-black text-slate-800">{formatMoney(totalSangria)}</div></div><div className="bg-white p-4 rounded-2xl text-red-600 shadow-sm border border-red-100"><Wallet size={32} /></div></div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100"><div className="text-blue-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><DollarSign size={18} /> Faturamento Bruto</div><div className="text-4xl font-black text-slate-800">R$ {totalSales.toFixed(2)}</div></div>
-                <div className="p-5 bg-purple-50/50 rounded-2xl border border-purple-100"><div className="text-purple-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18} /> Volume de Vendas</div><div className="text-4xl font-black text-slate-800">{filteredOrders.length} <span className="text-lg text-slate-500 font-medium">pedidos</span></div></div>
-                <div className="p-5 bg-amber-50/50 rounded-2xl border border-amber-100"><div className="text-amber-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-4xl font-black text-slate-800">R$ {filteredOrders.length > 0 ? (totalSales / filteredOrders.length).toFixed(2) : '0.00'}</div></div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-2">
-                <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><Wallet size={20} className="text-blue-500" /> Detalhamento Financeiro</h3>
-                <div className="overflow-hidden rounded-2xl border border-slate-100">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold tracking-wider"><tr><th className="p-4">Método de Pagamento</th><th className="p-4 text-right">Valor Total Recebido</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      <tr className="hover:bg-slate-50 transition-colors"><td className="p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-teal-400"></div> PIX</td><td className="p-4 text-right font-mono text-base font-medium">R$ {salesByMethod.pix.toFixed(2)}</td></tr>
-                      <tr className="hover:bg-slate-50 transition-colors"><td className="p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-emerald-400"></div> Dinheiro</td><td className="p-4 text-right font-mono text-base font-medium">R$ {salesByMethod.dinheiro.toFixed(2)}</td></tr>
-                      <tr className="hover:bg-slate-50 transition-colors"><td className="p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-indigo-400"></div> Cartão (Déb/Créd)</td><td className="p-4 text-right font-mono text-base font-medium">R$ {salesByMethod.cartao.toFixed(2)}</td></tr>
-                      <tr className="bg-slate-50 border-t-2 border-slate-200"><td className="p-5 font-black text-slate-800 uppercase">Total Consolidado</td><td className="p-5 text-right font-black text-slate-900 font-mono text-xl text-blue-600">R$ {totalSales.toFixed(2)}</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-1">
-                <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><TrendingUp size={20} className="text-yellow-500" /> Top 10 Mais Vendidos</h3>
-                <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
-                  {(Object.entries(filteredOrders.reduce((a, o) => { 
-                    o.items?.forEach(i => { 
-                      a[i.name] = (a[i.name] || 0) + i.qty;
-                      i.subItems?.forEach(sub => {
-                        a[sub.name] = (a[sub.name] || 0) + (sub.qty * i.qty);
-                      });
-                    }); 
-                    return a; 
-                  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10)).map(([n, q], i) => (
-                    <div key={i}>
-                      <div className="flex justify-between text-sm mb-1.5"><span className="font-bold text-slate-700">{i + 1}. {n}</span><span className="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{q} un</span></div>
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }}></div></div>
-                    </div>
-                  ))}
-                  {Object.keys(filteredOrders).length === 0 && <div className="text-slate-400 text-sm text-center font-medium pt-10">Nenhuma venda no período.</div>}
-                </div>
-              </div>
-              
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-3">
-                <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><Plus size={20} className="text-emerald-500" /> Cadastro e Gestão de Produtos</h3>
-                <div className="space-y-4 mb-8 p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome do Produto</label><input value={newProdName} onChange={(e) => setNewProdName(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Ex: X-Tudo, Bolo de Cenoura..." /></div>
-                  <div className="grid grid-cols-2 gap-5">
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0.00" /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={newProdCat} onChange={(e) => setNewProdCat(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                  </div>
-                  <button onClick={addNewProduct} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20 active:scale-95 text-lg mt-2">Adicionar Novo Produto</button>
-                </div>
-                
-                <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="w-full text-left border-collapse">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider font-bold"><th className="p-4">Produto</th><th className="p-4">Categoria</th><th className="p-4">Preço</th><th className="p-4 text-center">Estoque</th><th className="p-4 text-right">Ações</th></tr></thead>
-                    <tbody className="text-sm divide-y divide-slate-100">
-                      {products.map(p => (
-                        <tr key={p.id} className="hover:bg-blue-50/50 transition-colors group">
-                          <td className="p-4 font-bold text-slate-800">{p.name}</td>
-                          <td className="p-4"><span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">{p.category}</span></td>
-                          <td className="p-4 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td>
-                          <td className="p-4 text-center"><span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock < 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{p.stock} un</span></td>
-                          <td className="p-4 text-right"><button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1"><Edit3 size={14} /> Editar</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </div>
             </div>
           </div>
@@ -2650,12 +2453,12 @@ export default function App() {
             <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 border-t-4 border-blue-600">
               <div className="flex justify-center mb-4"><div className="bg-blue-50 p-4 rounded-full text-blue-600"><Lock size={40} /></div></div>
               <h3 className="text-xl font-black text-slate-800 mb-2 text-center">Acesso Gerencial</h3>
-              <p className="text-sm text-slate-500 mb-6 text-center">Digite a Senha Caixa para acessar o painel.</p>
+              <p className="text-sm text-slate-500 mb-6 text-center">Digite a Senha Caixa para aceder ao painel.</p>
               <input type="password" autoFocus placeholder="Senha de Acesso" className="w-full border-2 p-4 rounded-xl text-center text-xl font-bold outline-none focus:border-blue-500 transition-all mb-2" value={adminPasswordInput} onChange={(e) => { setAdminPasswordInput(e.target.value); setAdminError(''); }} onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()} />
               {adminError && <p className="text-red-500 text-sm font-bold text-center">{adminError}</p>}
               <div className="flex gap-3 mt-6">
                 <button onClick={() => setShowAdminAuth(false)} className="flex-1 py-3.5 text-slate-500 bg-slate-100 font-bold rounded-xl">Cancelar</button>
-                <button onClick={handleAdminLogin} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold">Acessar</button>
+                <button onClick={handleAdminLogin} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold">Aceder</button>
               </div>
             </div>
           </div>
