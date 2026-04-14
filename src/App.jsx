@@ -72,16 +72,16 @@ const callGemini = async (prompt) => {
 // --- DADOS PADRÃO ---
 const DEFAULT_PRODUCTS_SEED = [
   { id: 1, name: 'Café 210ml', price: 4.00, category: 'Bebidas', stock: 100, icon: 'drink' },
-  { id: 2, name: 'Tapioca', price: 4.00, category: 'Lanches', stock: 50, icon: 'burger' },
-  { id: 3, name: 'Cuscuz', price: 4.00, category: 'Lanches', stock: 50, icon: 'burger' },
-  { id: 8, name: 'Pão na Chapa', price: 3.50, category: 'Lanches', stock: 50, icon: 'burger' },
+  { id: 2, name: 'Tapioca', price: 4.00, category: 'Tapiocas', stock: 50, icon: 'burger' },
+  { id: 3, name: 'Cuscuz', price: 4.00, category: 'Cuscuz', stock: 50, icon: 'burger' },
+  { id: 8, name: 'Pão na Chapa', price: 3.50, category: 'Pão', stock: 50, icon: 'burger' },
   { id: 4, name: 'Carne Desfiada 80g', price: 5.00, category: 'Adicionais', stock: 30, icon: 'fries' },
   { id: 5, name: 'Frango Desfiado 80g', price: 5.00, category: 'Adicionais', stock: 30, icon: 'fries' },
   { id: 6, name: 'Queijo Fatia', price: 3.00, category: 'Adicionais', stock: 50, icon: 'fries' },
   { id: 7, name: 'Ovo 1 un', price: 3.00, category: 'Adicionais', stock: 50, icon: 'fries' },
 ];
 
-const CATEGORIES = ['Lanches', 'Adicionais', 'Bebidas', 'Salgados', 'Sobremesas', 'Bolos'];
+const CATEGORIES = ['Tapiocas', 'Cuscuz', 'Pão', 'Salgados e Caldos', 'Bolos e Doces', 'Bebidas', 'Diversos', 'Adicionais'];
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
@@ -701,7 +701,14 @@ const MobileView = ({ user, initialRole, onBack }) => {
       } else {
         const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
         setProducts(list);
-        setCategories(['Todos', ...new Set(list.map(p => p.category).filter(Boolean))]);
+        
+        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
+        fetchedCategories.sort((a, b) => {
+          const indexA = CATEGORIES.indexOf(a);
+          const indexB = CATEGORIES.indexOf(b);
+          return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
+        });
+        setCategories(['Todos', ...fetchedCategories]);
       }
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
@@ -724,11 +731,13 @@ const MobileView = ({ user, initialRole, onBack }) => {
   const addToCart = (p) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
 
-    // --- LÓGICA DE UNIÃO AUTOMÁTICA (SOMENTE LANCHES + ADICIONAIS) ---
-    if (p.category === 'Adicionais') {
+    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão'];
+
+    // --- LÓGICA DE UNIÃO AUTOMÁTICA ---
+    if (p.category === 'Adicionais' || p.category === 'Diversos') {
       const reversedCart = [...cart].reverse();
-      // Procura especificamente o último 'Lanche' (Cuscuz, Tapioca, Pão) desta pessoa
-      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && i.category === 'Lanches');
+      // Procura especificamente o último 'Lanche base' desta pessoa
+      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
       
       if (parentIdxInReversed !== -1) {
         const actualIdx = cart.length - 1 - parentIdxInReversed;
@@ -749,13 +758,13 @@ const MobileView = ({ user, initialRole, onBack }) => {
         showToastMsg(`${p.name} unido a ${parentItem.name}!`);
         return;
       }
-    } else if (p.category === 'Lanches') {
-      // Se adicionar um Lanche (Cuscuz, Tapioca, Pão) e tiver um Adicional solto esperando
-      const orphanAddons = cart.filter(i => i.guest === currentGuest && i.category === 'Adicionais' && (!i.subItems || i.subItems.length === 0));
+    } else if (baseCategories.includes(p.category)) {
+      // Se adicionar um Lanche base e tiver um Adicional solto esperando
+      const orphanAddons = cart.filter(i => i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
       
       if (orphanAddons.length > 0) {
         // Remove os adicionais órfãos do carrinho principal
-        let newCart = cart.filter(i => !(i.guest === currentGuest && i.category === 'Adicionais' && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i => !(i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
         
         // Agrupa os órfãos
         let newSubItems = [];
@@ -1119,6 +1128,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [payingGuest, setPayingGuest] = useState('Mesa Completa');
   const [renameModal, setRenameModal] = useState({ show: false, oldName: '', newName: '' });
 
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [searchTerm, setSearchTerm] = useState('');
+
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -1132,7 +1145,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [newProdName, setNewProdName] = useState('');
   const [newProdPrice, setNewProdPrice] = useState('');
-  const [newProdCat, setNewProdCat] = useState('Lanches');
+  const [newProdCat, setNewProdCat] = useState('Tapiocas');
 
   const [cashMovements, setCashMovements] = useState([]);
   const [showCashMovementModal, setShowCashMovementModal] = useState(false);
@@ -1158,7 +1171,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [settleMethod, setSettleMethod] = useState('Pix');
 
   const [showSettingsPasswordModal, setShowSettingsPasswordModal] = useState(false);
-  const [settingsPasswordInput, setSettingsPasswordInput] = useState('1234');
+  const [settingsPasswordInput, setSettingsPasswordInput] = useState('');
   const [isSettingsUnlocked, setIsSettingsUnlocked] = useState(false);
 
   const [actionAuthModal, setActionAuthModal] = useState({ show: false, action: null, order: null });
@@ -1200,6 +1213,14 @@ const PosView = ({ user, onBack, initialSettings }) => {
       } else {
         const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); 
         setProducts(list); 
+        
+        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
+        fetchedCategories.sort((a, b) => {
+          const indexA = CATEGORIES.indexOf(a);
+          const indexB = CATEGORIES.indexOf(b);
+          return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
+        });
+        setCategories(['Todos', ...fetchedCategories]);
       } 
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
@@ -1224,10 +1245,12 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const addToCart = (p) => { 
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; } 
     
-    // --- LÓGICA DE UNIÃO AUTOMÁTICA NO POS (SOMENTE LANCHES + ADICIONAIS) ---
-    if (p.category === 'Adicionais') {
+    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão'];
+
+    // --- LÓGICA DE UNIÃO AUTOMÁTICA NO POS ---
+    if (p.category === 'Adicionais' || p.category === 'Diversos') {
       const reversedCart = [...cart].reverse();
-      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && i.category === 'Lanches');
+      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
       
       if (parentIdxInReversed !== -1) {
         const actualIdx = cart.length - 1 - parentIdxInReversed;
@@ -1248,12 +1271,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
         showToastMsg(`${p.name} unido a ${parentItem.name}!`);
         return;
       }
-    } else if (p.category === 'Lanches') {
-      // Se a pessoa adicionar um Lanche AGORA, mas já tiver clicado num Adicional antes (Adicional órfão)
-      const orphanAddons = cart.filter(i => i.guest === currentGuest && i.category === 'Adicionais' && (!i.subItems || i.subItems.length === 0));
+    } else if (baseCategories.includes(p.category)) {
+      const orphanAddons = cart.filter(i => i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
       
       if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !(i.guest === currentGuest && i.category === 'Adicionais' && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i => !(i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
         
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
@@ -1339,14 +1361,15 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const paymentsToProcess = overridePayments || partialPayments;
     
     // Lógica para divisão de conta (Partial Payment via Guest)
-    const isPartialPayment = selectedTabToSettle && payingGuest !== 'Mesa Completa';
+    const isPartialPayment = payingGuest !== 'Mesa Completa';
+    
     const itemsToPay = selectedTabToSettle 
         ? (isPartialPayment ? selectedTabToSettle.items.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : selectedTabToSettle.items) 
-        : cart;
+        : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cart);
     
-    const itemsToKeep = selectedTabToSettle && isPartialPayment 
-        ? selectedTabToSettle.items.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) 
-        : [];
+    const itemsToKeep = selectedTabToSettle 
+        ? (isPartialPayment ? selectedTabToSettle.items.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : [])
+        : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
 
     const totalOrder = itemsToPay.reduce((acc, item) => acc + calcItemTotal(item), 0);
 
@@ -1421,7 +1444,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         status: 'Pago', 
         paymentStatus: 'PAGO', 
         method: methodString, 
-        client: selectedTabToSettle ? (isPartialPayment ? `${selectedTabToSettle.client} (${payingGuest})` : selectedTabToSettle.client) : (client || 'Balcão'), 
+        client: selectedTabToSettle ? (isPartialPayment ? `${selectedTabToSettle.client} (${payingGuest})` : selectedTabToSettle.client) : (client || (isPartialPayment ? `Balcão (${payingGuest})` : 'Balcão')), 
         date: selectedTabToSettle?.date || nowISO, 
         receivedValue: cashPay ? received : null,
         changeValue: change > 0 ? change : null
@@ -1457,15 +1480,39 @@ const PosView = ({ user, onBack, initialSettings }) => {
           });
         }
       } else {
-        await addDoc(getCollectionRef('orders'), { 
-          ...orderData, 
-          origin: 'Caixa', 
-          kitchenStatus: 'Pendente', 
-          time: new Date().toLocaleTimeString().slice(0, 5),
-          payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
-          paidAt: nowISO
-        });
-        await deductStock(cart);
+        // Pagamento Direto no POS (Novo Pedido)
+        if (isPartialPayment && itemsToKeep.length > 0) {
+          await addDoc(getCollectionRef('orders'), { 
+            ...orderData, 
+            origin: 'Caixa (Parcial)', 
+            kitchenStatus: 'Pendente', 
+            time: new Date().toLocaleTimeString().slice(0, 5),
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
+            paidAt: nowISO
+          });
+          await deductStock(itemsToPay);
+          
+          setFinalizedOrder(orderData);
+          setCart(itemsToKeep); // Mantém os restantes no carrinho do POS
+          const remainingGuests = [...new Set(itemsToKeep.map(i => i.guest || 'Pessoa 1'))];
+          setGuestList(remainingGuests.length > 0 ? remainingGuests : ['Pessoa 1']);
+          setCurrentGuest(remainingGuests.length > 0 ? remainingGuests[0] : 'Pessoa 1');
+          setPartialPayments([]);
+          setPayingGuest('Mesa Completa');
+          setShowPaymentModal(false);
+          showToastMsg(`Venda finalizada para ${payingGuest}! O restante continua no carrinho.`);
+          return; // Previne o limpa-carrinho global abaixo
+        } else {
+          await addDoc(getCollectionRef('orders'), { 
+            ...orderData, 
+            origin: 'Caixa', 
+            kitchenStatus: 'Pendente', 
+            time: new Date().toLocaleTimeString().slice(0, 5),
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
+            paidAt: nowISO
+          });
+          await deductStock(itemsToPay);
+        }
       }
       
       setFinalizedOrder(orderData);
@@ -1612,7 +1659,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   };
 
   const handleSettingsAccess = () => {
-    if (isSettingsUnlocked) { setView('settings'); } else { setShowSettingsPasswordModal(true); }
+    if (isSettingsUnlocked) { setView('settings'); } else { setShowSettingsPasswordModal(true); setSettingsPasswordInput(''); }
   };
 
   const submitSettingsPassword = () => {
@@ -1694,10 +1741,14 @@ const PosView = ({ user, onBack, initialSettings }) => {
     });
   };
 
+  const changeDate = (days) => { const d = new Date(reportDate); d.setDate(d.getDate() + days); setReportDate(d); };
+  const changeWeek = (weeks) => { const d = new Date(reportDate); d.setDate(d.getDate() + (weeks * 7)); setReportDate(d); };
+  const changeMonth = (months) => { const d = new Date(reportDate); d.setMonth(d.getMonth() + months); setReportDate(d); };
+
   // Cálculo de Pagamento Dinâmico para a Mesa Inteira ou Parcial
   const itemsToPayLive = selectedTabToSettle 
     ? (payingGuest === 'Mesa Completa' ? selectedTabToSettle.items : selectedTabToSettle.items.filter(i => (i.guest || 'Pessoa 1') === payingGuest)) 
-    : cart;
+    : (payingGuest === 'Mesa Completa' ? cart : cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest));
     
   const modalTotal = itemsToPayLive.reduce((acc, item) => acc + calcItemTotal(item), 0);
   const modalPaid = partialPayments.reduce((acc, p) => acc + p.value, 0);
@@ -1711,13 +1762,20 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const uniqueGuestsInTab = selectedTabToSettle ? [...new Set(selectedTabToSettle.items.map(i => i.guest || 'Pessoa 1'))] : [...new Set(cart.map(i => i.guest || 'Pessoa 1'))];
 
+  const filtered = products.filter(p => (selectedCategory === 'Todos' || p.category === selectedCategory) && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
   const getFilteredOrders = () => {
     return orders.filter(o => {
       if (!o || o.paymentStatus !== 'PAGO' || !o.date) return false;
       try {
         const orderDate = new Date(o.date);
-        if (reportMode === 'daily') return orderDate.getDate() === reportDate.getDate() && orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
-        else return orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+        if (reportMode === 'daily') {
+            return orderDate.getDate() === reportDate.getDate() && orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+        } else if (reportMode === 'weekly') {
+            return getWeekId(o.date.split('T')[0] || o.date) === getWeekId(reportDate.toISOString().split('T')[0]);
+        } else {
+            return orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+        }
       } catch { return false; }
     });
   };
@@ -1734,12 +1792,14 @@ const PosView = ({ user, onBack, initialSettings }) => {
   
   const filteredMovements = cashMovements.filter(m => {
     if (!m.date) return false;
-    const mDate = new Date(m.date); if (reportMode === 'daily') return mDate.getDate() === reportDate.getDate() && mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear(); else return mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear();
+    const mDate = new Date(m.date); 
+    if (reportMode === 'daily') return mDate.getDate() === reportDate.getDate() && mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear(); 
+    else if (reportMode === 'weekly') return getWeekId(m.date.split('T')[0] || m.date) === getWeekId(reportDate.toISOString().split('T')[0]);
+    else return mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear();
   });
+  
   const totalSuprimento = filteredMovements.filter(m => m.type === 'suprimento').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
   const totalSangria = filteredMovements.filter(m => m.type === 'sangria').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
-  const changeDate = (days) => { const d = new Date(reportDate); d.setDate(d.getDate() + days); setReportDate(d); };
-  const changeMonth = (months) => { const d = new Date(reportDate); d.setMonth(d.getMonth() + months); setReportDate(d); };
   
   const orderMetrics = useMemo(() => {
     const now = new Date(); const today = now.toISOString().split('T')[0]; const cm = today.slice(0, 7); const cy = today.slice(0, 4); 
@@ -1845,6 +1905,21 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="flex-1 p-6 overflow-y-auto bg-slate-50">
               <h1 className="text-2xl font-bold mb-6 text-slate-800">Novo Pedido (Balcão)</h1>
 
+              {/* BARRA DE FILTRO E PESQUISA - IGUAL AO MOBILE */}
+              <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl">
+                <div className="flex gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                    <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                  {categories.map(c => (
+                    <button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === c ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{c}</button>
+                  ))}
+                </div>
+              </div>
+
               {/* Selecionador de Pessoas no POS */}
               <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar">
                 <Users size={18} className="text-slate-400 mr-1 shrink-0" />
@@ -1870,7 +1945,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {products.map(p => (
+                {filtered.map(p => (
                   <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-col text-left transition-all active:scale-95 ${p.stock <= 0 ? 'opacity-50' : 'hover:border-blue-300 hover:shadow-md group'}`}>
                     <div className="flex justify-between items-center mb-3 w-full">
                       <div className="bg-blue-50 p-2 rounded-lg group-hover:bg-blue-100 transition-colors"><IconMapper type={p.icon} className="w-5 h-5 text-blue-600" /></div> 
@@ -2073,15 +2148,25 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><LayoutDashboard size={32} className="text-purple-600" /> Dashboard & Gestão</h1>
               <div className="flex gap-3">
                 <button onClick={() => setShowCashMovementModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
-                <div className="flex bg-white p-1.5 rounded-xl shadow-sm border border-slate-200"><button onClick={() => setReportMode('daily')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'daily' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Diário</button><button onClick={() => setReportMode('monthly')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'monthly' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Mensal</button></div>
+                <div className="flex bg-white p-1.5 rounded-xl shadow-sm border border-slate-200">
+                  <button onClick={() => setReportMode('daily')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'daily' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Diário</button>
+                  <button onClick={() => setReportMode('weekly')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'weekly' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Semanal</button>
+                  <button onClick={() => setReportMode('monthly')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${reportMode === 'monthly' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Mensal</button>
+                </div>
               </div>
             </header>
             
             <div className="mb-8 flex justify-between items-center bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
               <div className="flex items-center gap-4">
-                <button onClick={() => reportMode === 'daily' ? changeDate(-1) : changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronLeft size={24} className="text-slate-600" /></button>
-                <div className="flex items-center gap-3"><Calendar size={24} className="text-blue-600" /><span className="text-xl font-bold text-slate-800 capitalize min-w-[200px] text-center">{reportMode === 'daily' ? reportDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) : reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span></div>
-                <button onClick={() => reportMode === 'daily' ? changeDate(1) : changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronRight size={24} className="text-slate-600" /></button>
+                <button onClick={() => reportMode === 'daily' ? changeDate(-1) : reportMode === 'weekly' ? changeWeek(-1) : changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronLeft size={24} className="text-slate-600" /></button>
+                <div className="flex items-center gap-3"><Calendar size={24} className="text-blue-600" />
+                  <span className="text-xl font-bold text-slate-800 capitalize min-w-[200px] text-center">
+                    {reportMode === 'daily' ? reportDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) : 
+                     reportMode === 'weekly' ? `Semana ${getWeekId(reportDate.toISOString().split('T')[0]).split('-W')[1]} de ${reportDate.getFullYear()}` :
+                     reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+                <button onClick={() => reportMode === 'daily' ? changeDate(1) : reportMode === 'weekly' ? changeWeek(1) : changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ChevronRight size={24} className="text-slate-600" /></button>
               </div>
               <button onClick={() => setReportDate(new Date())} className="text-sm font-bold text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 transition-colors">Voltar para Hoje</button>
             </div>
@@ -2114,8 +2199,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
               </div>
               
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-1">
-                <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><TrendingUp size={20} className="text-yellow-500" /> Top 5 Mais Vendidos</h3>
-                <div className="space-y-5">
+                <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><TrendingUp size={20} className="text-yellow-500" /> Top 10 Mais Vendidos</h3>
+                <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
                   {(Object.entries(filteredOrders.reduce((a, o) => { 
                     o.items?.forEach(i => { 
                       a[i.name] = (a[i.name] || 0) + i.qty;
@@ -2124,10 +2209,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       });
                     }); 
                     return a; 
-                  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 5)).map(([n, q], i) => (
+                  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10)).map(([n, q], i) => (
                     <div key={i}>
-                      <div className="flex justify-between text-sm mb-2"><span className="font-bold text-slate-700">{i + 1}. {n}</span><span className="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{q} un</span></div>
-                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }}></div></div>
+                      <div className="flex justify-between text-sm mb-1.5"><span className="font-bold text-slate-700">{i + 1}. {n}</span><span className="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{q} un</span></div>
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }}></div></div>
                     </div>
                   ))}
                   {Object.keys(filteredOrders).length === 0 && <div className="text-slate-400 text-sm text-center font-medium pt-10">Nenhuma venda no período.</div>}
@@ -2432,45 +2517,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* Modal de Renomear Pessoa (POS) */}
-        {renameModal.show && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-              <h3 className="text-xl font-bold text-slate-800 mb-4">Nome do Cliente</h3>
-              <input
-                autoFocus
-                value={renameModal.newName}
-                onChange={e => setRenameModal({...renameModal, newName: e.target.value})}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    const finalName = renameModal.newName.trim() || renameModal.oldName;
-                    if (finalName !== renameModal.oldName && !guestList.includes(finalName)) {
-                      setGuestList(guestList.map(g => g === renameModal.oldName ? finalName : g));
-                      if (currentGuest === renameModal.oldName) setCurrentGuest(finalName);
-                      setCart(cart.map(item => item.guest === renameModal.oldName ? { ...item, guest: finalName } : item));
-                    }
-                    setRenameModal({show:false, oldName:'', newName:''});
-                  }
-                }}
-                className="w-full border border-slate-300 p-4 rounded-xl mb-6 text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Ex: João"
-              />
-              <div className="flex gap-2">
-                <button onClick={() => setRenameModal({show:false, oldName:'', newName:''})} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
-                <button onClick={() => {
-                  const finalName = renameModal.newName.trim() || renameModal.oldName;
-                  if (finalName !== renameModal.oldName && !guestList.includes(finalName)) {
-                    setGuestList(guestList.map(g => g === renameModal.oldName ? finalName : g));
-                    if (currentGuest === renameModal.oldName) setCurrentGuest(finalName);
-                    setCart(cart.map(item => item.guest === renameModal.oldName ? { ...item, guest: finalName } : item));
-                  }
-                  setRenameModal({show:false, oldName:'', newName:''});
-                }} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors">Salvar</button>
-              </div>
-            </div>
-          </div>
-        )}
-
       </div>
     </div>
   );
@@ -2501,6 +2547,7 @@ export default function App() {
       setInitialRole('Gerência');
       setRole('pos');
       setShowAdminAuth(false);
+      setAdminPasswordInput('');
     } else { setAdminError('Senha incorreta.'); }
   };
 
@@ -2547,7 +2594,7 @@ export default function App() {
           {authError && <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 text-xs text-center"><AlertTriangle className="mx-auto mb-2" size={20} />Conexão Firebase Recusada:<br/>{authError}</div>}
           <div className="space-y-4">
             <button onClick={() => { setInitialRole('Garçom / Cliente'); setRole('mobile'); }} className="w-full flex items-center p-5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl transition-all group"><div className="bg-indigo-500 text-white p-3 rounded-xl mr-4"><MonitorSmartphone size={24} /></div><div className="text-left flex-1 font-bold text-indigo-900 text-lg">App Mobile</div><ChevronRight className="text-indigo-400" /></button>
-            <button onClick={() => setShowAdminAuth(true)} className="w-full flex items-center p-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-lg group"><div className="bg-blue-500 text-white p-3 rounded-xl mr-4"><LayoutDashboard size={24} /></div><div className="text-left flex-1 font-bold text-lg">Painel Administrativo</div><ChevronRight className="text-slate-500" /></button>
+            <button onClick={() => { setShowAdminAuth(true); setAdminPasswordInput(''); setAdminError(''); }} className="w-full flex items-center p-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-lg group"><div className="bg-blue-500 text-white p-3 rounded-xl mr-4"><LayoutDashboard size={24} /></div><div className="text-left flex-1 font-bold text-lg">Painel Administrativo</div><ChevronRight className="text-slate-500" /></button>
           </div>
         </div>
         {showAdminAuth && (
