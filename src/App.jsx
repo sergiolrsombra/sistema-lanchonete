@@ -177,6 +177,7 @@ const handlePrint = (order, settings, type = 'customer') => {
         <div style="margin-bottom: 10px;">
           <p style="margin: 2px 0;">ID: #${order.id || 'N/A'}</p>
           <p style="margin: 2px 0;">Cliente: <span class="bold">${order.client}</span></p>
+          <p style="margin: 2px 0;">Contato: ${order.phone || 'N/A'}</p>
           <p style="margin: 2px 0;">Data/Hora: ${new Date().toLocaleString('pt-BR')}</p>
         </div>
 
@@ -670,9 +671,14 @@ const CashControl = ({ user, orders }) => {
 // --------------------------------------------------------------------------------
 // SISTEMA MOBILE (CLIENTE / GARÇOM)
 // --------------------------------------------------------------------------------
-const MobileView = ({ user, initialRole, onBack }) => {
-  const [view, setView] = useState('tables');
-  const [selectedTable, setSelectedTable] = useState('');
+const MobileView = ({ user, initialRole, onBack, settings }) => {
+  const [view, setView] = useState('login');
+  
+  // Dados do Cliente
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [orderType, setOrderType] = useState('Consumo no Local');
+
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -681,11 +687,6 @@ const MobileView = ({ user, initialRole, onBack }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderCounter, setOrderCounter] = useState(1000);
   const [toast, setToast] = useState(null);
-
-  // Estados de "Pessoa/Lugar"
-  const [currentGuest, setCurrentGuest] = useState('Pessoa 1');
-  const [guestList, setGuestList] = useState(['Pessoa 1']);
-  const [renameModal, setRenameModal] = useState({ show: false, oldName: '', newName: '' });
 
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiResponse, setAiResponse] = useState('');
@@ -720,12 +721,13 @@ const MobileView = ({ user, initialRole, onBack }) => {
 
   const showToastMsg = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
 
-  const handleTableSelect = (t) => { 
-    setSelectedTable(t); 
-    setCart([]); 
-    setGuestList(['Pessoa 1']);
-    setCurrentGuest('Pessoa 1');
-    setView('menu'); 
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
+    if (!customerName) {
+      showToastMsg("Por favor, digite seu nome.", "error");
+      return;
+    }
+    setView('menu');
   };
   
   const addToCart = (p) => {
@@ -736,8 +738,7 @@ const MobileView = ({ user, initialRole, onBack }) => {
     // --- LÓGICA DE UNIÃO AUTOMÁTICA ---
     if (p.category === 'Adicionais' || p.category === 'Diversos') {
       const reversedCart = [...cart].reverse();
-      // Procura especificamente o último 'Lanche base' desta pessoa
-      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
+      const parentIdxInReversed = reversedCart.findIndex(i => baseCategories.includes(i.category));
       
       if (parentIdxInReversed !== -1) {
         const actualIdx = cart.length - 1 - parentIdxInReversed;
@@ -759,14 +760,11 @@ const MobileView = ({ user, initialRole, onBack }) => {
         return;
       }
     } else if (baseCategories.includes(p.category)) {
-      // Se adicionar um Lanche base e tiver um Adicional solto esperando
-      const orphanAddons = cart.filter(i => i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
+      const orphanAddons = cart.filter(i => (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
       
       if (orphanAddons.length > 0) {
-        // Remove os adicionais órfãos do carrinho principal
-        let newCart = cart.filter(i => !(i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i => !((i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
         
-        // Agrupa os órfãos
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
            const ex = newSubItems.find(s => s.id === orphan.id);
@@ -777,20 +775,19 @@ const MobileView = ({ user, initialRole, onBack }) => {
            }
         });
         
-        // Adiciona a base com as proteínas já embutidas
-        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems, guest: currentGuest });
+        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems });
         setCart(newCart);
         showToastMsg(`Adicionais unidos a ${p.name}!`);
         return;
       }
     }
 
-    // Comportamento Normal (Bebidas, Bolos, ou Adicionais sem base)
-    const ex = cart.find(i => i.id === p.id && i.guest === currentGuest && (!i.subItems || i.subItems.length === 0));
+    // Comportamento Normal
+    const ex = cart.find(i => i.id === p.id && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
     } else {
-      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuest }]);
+      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [] }]);
     }
   };
 
@@ -848,17 +845,56 @@ const MobileView = ({ user, initialRole, onBack }) => {
           batch.update(getDocRef('products', pItem.firestoreId), { stock: Math.max(0, pItem.stock - totalQty) });
         }
       });
-      await addDoc(getCollectionRef('orders'), { id: orderCounter, client: selectedTable, waiter: initialRole, items: cart, total: getCartTotal(), status: 'ABERTO', paymentStatus: 'ABERTO', kitchenStatus: 'Pendente', method: 'Aguardando', date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Mobile' });
+
+      const orderData = { 
+        id: orderCounter, 
+        client: customerName,
+        phone: customerPhone,
+        orderType: orderType,
+        waiter: 'WhatsApp', 
+        items: cart, 
+        total: getCartTotal(), 
+        status: 'ABERTO', 
+        paymentStatus: 'ABERTO', 
+        kitchenStatus: 'Pendente', 
+        method: 'Aguardando', 
+        date: new Date().toISOString(), 
+        time: new Date().toLocaleTimeString().slice(0, 5), 
+        origin: 'WhatsApp' 
+      };
+
+      await addDoc(getCollectionRef('orders'), orderData);
       await batch.commit();
+
+      // Formatar Mensagem para o WhatsApp
+      let msg = `*NOVO PEDIDO - ${settings?.storeName}*\n\n`;
+      msg += `👤 *Cliente:* ${customerName}\n`;
+      if (customerPhone) msg += `📞 *Contato:* ${customerPhone}\n`;
+      msg += `🛵 *Tipo:* ${orderType}\n\n`;
+      msg += `*ITENS DO PEDIDO:*\n`;
+      cart.forEach(item => {
+         msg += `👉 ${item.qty}x ${item.name} - R$ ${calcItemTotal(item).toFixed(2)}\n`;
+         item.subItems?.forEach(sub => {
+             msg += `   + ${sub.qty * item.qty}x ${sub.name}\n`;
+         });
+         if (item.obs) msg += `   *Obs:* ${item.obs}\n`;
+      });
+      msg += `\n💰 *TOTAL: R$ ${getCartTotal().toFixed(2)}*\n\n`;
+      msg += `Aguardo a chave PIX e confirmação do pedido!`;
+
+      const storePhoneNumber = settings?.phone?.replace(/\D/g, '') || '';
+      if (storePhoneNumber) {
+         window.open(`https://wa.me/55${storePhoneNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+      }
+
       setView('success'); 
       setTimeout(() => { 
         setCart([]); 
-        setSelectedTable(''); 
-        setGuestList(['Pessoa 1']); 
-        setCurrentGuest('Pessoa 1'); 
-        setView('tables'); 
+        setCustomerName('');
+        setCustomerPhone('');
+        setView('login'); 
         setIsSubmitting(false); 
-      }, 2000);
+      }, 3000);
     } catch (e) { showToastMsg("Erro ao enviar pedido", "error"); setIsSubmitting(false); }
   };
 
@@ -876,37 +912,56 @@ const MobileView = ({ user, initialRole, onBack }) => {
   const total = getCartTotal(); 
   const count = cart.reduce((a, i) => a + i.qty, 0);
 
-  if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1></div>;
+  if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1><p className="mt-4 text-green-100 text-center">Verifique o seu WhatsApp para concluir o pagamento.</p></div>;
 
   return (
     <div className="min-h-screen bg-slate-100 pb-24 font-sans max-w-md mx-auto shadow-2xl relative">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-20 shadow-md flex justify-between items-center">
-        {view === 'tables' ? (
+        {view === 'login' ? (
           <div className="flex items-center gap-2">
             <button onClick={onBack} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button>
-            <span className="font-bold">Olá, {initialRole}</span>
+            <span className="font-bold">Cardápio Digital</span>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => setView(view === 'cart' ? 'menu' : 'tables')} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button>
-            <span className="font-bold">{selectedTable}</span>
+            <button onClick={() => setView(view === 'cart' ? 'menu' : 'login')} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button>
+            <span className="font-bold truncate max-w-[200px]">{customerName || 'Cardápio'}</span>
           </div>
         )}
-        <div className="text-xs bg-slate-800 px-2 py-1 rounded flex items-center gap-1"><User size={12} /> {initialRole}</div>
+        <div className="text-xs bg-slate-800 px-2 py-1 rounded flex items-center gap-1"><Store size={12} /> {settings?.storeName || 'Loja'}</div>
       </div>
       
-      {view === 'tables' && (
-        <div className="p-4 animate-in fade-in">
-          <h2 className="font-bold text-center mb-4 text-slate-800">Selecione a Mesa</h2>
-          <div className="grid grid-cols-3 gap-3">
-            {MESAS.map(t => (
-              <button key={t} onClick={() => handleTableSelect(t)} className="bg-white p-4 rounded-xl shadow-sm border font-bold text-slate-700 flex flex-col items-center hover:bg-indigo-50 hover:border-indigo-200 transition-all active:scale-95">
-                <Utensils size={20} className="opacity-50 mb-1" />
-                {t.replace('Mesa ', '')}
-              </button>
-            ))}
-            <button onClick={() => handleTableSelect('Balcão')} className="col-span-3 bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-200 p-4 rounded-xl font-bold transition-all active:scale-95">Balcão / Viagem</button>
+      {view === 'login' && (
+        <div className="p-6 animate-in fade-in">
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <h2 className="font-black text-2xl text-slate-800 mb-2">Olá! 👋</h2>
+            <p className="text-slate-500 mb-6 text-sm">Preencha seus dados para acessar o nosso cardápio e fazer seu pedido.</p>
+            
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Seu Nome</label>
+                <input required value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-slate-800" placeholder="Ex: Maria Silva" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">WhatsApp</label>
+                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-slate-800" placeholder="(00) 00000-0000" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">O pedido é para:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['Consumo no Local', 'Retirada', 'Entrega'].map(t => (
+                    <button type="button" key={t} onClick={() => setOrderType(t)} className={`py-3 px-2 text-xs font-bold rounded-xl border transition-colors ${orderType === t ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-4">
+                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 text-lg">Ver Cardápio</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -928,33 +983,9 @@ const MobileView = ({ user, initialRole, onBack }) => {
             </div>
           </div>
 
-          {/* Selecionador de Pessoas */}
-          <div className="bg-white p-3 mb-2 flex items-center gap-2 overflow-x-auto shadow-sm sticky top-[138px] z-10 hide-scrollbar border-b">
-            <Users size={18} className="text-slate-400 mr-1 shrink-0" />
-            {guestList.map(g => (
-              <div key={g} className={`flex items-center rounded-full border transition-colors shrink-0 ${currentGuest === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
-                <button onClick={() => setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold whitespace-nowrap">
-                  {g}
-                </button>
-                {currentGuest === g && (
-                  <button onClick={() => setRenameModal({ show: true, oldName: g, newName: g })} className="pr-3 pl-1 py-1.5 hover:text-indigo-200 transition-colors" title="Renomear Cliente">
-                    <Edit3 size={12} />
-                  </button>
-                )}
-              </div>
-            ))}
-            <button onClick={() => {
-                const newG = `Pessoa ${guestList.length + 1}`;
-                setGuestList([...guestList, newG]);
-                setCurrentGuest(newG);
-            }} className="px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-white border border-dashed border-slate-400 text-slate-500 hover:bg-slate-50 flex items-center gap-1 shrink-0">
-                <Plus size={12} /> Add
-            </button>
-          </div>
-
           <div className="p-4 grid grid-cols-2 gap-3">
             {filtered.map(p => {
-              const qty = cart.filter(i => i.id === p.id && i.guest === currentGuest).reduce((sum, i) => sum + i.qty, 0);
+              const qty = cart.filter(i => i.id === p.id).reduce((sum, i) => sum + i.qty, 0);
               return (
                 <div key={p.id} className={`bg-white p-3 rounded-2xl shadow-sm border flex flex-col items-center text-center gap-2 transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'}`}>
                   <div className="bg-slate-100 p-4 rounded-full mb-1"><IconMapper type={p.icon} className="w-8 h-8 text-slate-700" /></div>
@@ -973,59 +1004,48 @@ const MobileView = ({ user, initialRole, onBack }) => {
       
       {view === 'cart' && (
         <div className="p-4 animate-in fade-in slide-in-from-right-4">
-          <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-slate-800"><ShoppingCart /> Resumo do Pedido</h2>
-          {cart.length > 0 && (<div className="bg-blue-50 border border-blue-100 text-blue-700 text-xs p-3 rounded-xl mb-4 font-medium flex items-start gap-2"><AlertCircle size={16} className="mt-0.5 shrink-0" /><p>Os recheios são unidos automaticamente ao último lanche da pessoa!</p></div>)}
+          <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-slate-800"><ShoppingCart /> Seu Pedido</h2>
           
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-4">
-            {guestList.map(g => {
-              const guestItems = cart.filter(i => i.guest === g);
-              if (guestItems.length === 0) return null;
-              
-              return (
-                <div key={g} className="border-b-4 border-slate-100 last:border-0 pb-2">
-                  <div className="bg-slate-50 p-3 font-bold text-slate-600 text-sm flex items-center gap-2 border-b border-slate-200">
-                    <UserCircle2 size={16} /> {g}
+            {cart.map(item => (
+              <div key={item.cartItemId} className="p-4 border-b border-slate-100 last:border-0">
+                <div className="flex justify-between items-start mb-2">
+                  <div><div className="font-bold text-slate-800"><span className="text-blue-600 mr-1">{item.qty}x</span> {item.name}</div><div className="text-sm text-slate-500 font-medium">R$ {calcItemTotal(item).toFixed(2)}</div></div>
+                  <div className="flex gap-2">
+                    <button onClick={() => removeFromCart(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-red-50 text-red-500 rounded hover:bg-red-100 active:scale-95 transition-all">-</button>
+                    <button onClick={() => incrementQty(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-green-50 text-green-600 rounded hover:bg-green-100 active:scale-95 transition-all">+</button>
                   </div>
-                  {guestItems.map(item => (
-                    <div key={item.cartItemId} className="p-4 border-b border-slate-100 last:border-0">
-                      <div className="flex justify-between items-start mb-2">
-                        <div><div className="font-bold text-slate-800"><span className="text-blue-600 mr-1">{item.qty}x</span> {item.name}</div><div className="text-sm text-slate-500 font-medium">R$ {calcItemTotal(item).toFixed(2)}</div></div>
-                        <div className="flex gap-2">
-                          <button onClick={() => removeFromCart(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-red-50 text-red-500 rounded hover:bg-red-100 active:scale-95 transition-all">-</button>
-                          <button onClick={() => incrementQty(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-green-50 text-green-600 rounded hover:bg-green-100 active:scale-95 transition-all">+</button>
+                </div>
+                {item.subItems && item.subItems.length > 0 && (
+                  <div className="pl-3 mt-3 mb-3 border-l-2 border-indigo-200 space-y-2">
+                    {item.subItems.map(sub => (
+                      <div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100">
+                        <span className="font-bold text-slate-600 text-xs">+ {sub.qty * item.qty}x {sub.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500 text-xs font-medium">R$ {(sub.price * sub.qty * item.qty).toFixed(2)}</span>
+                          <button onClick={() => unlinkItem(item.cartItemId, sub.id)} className="text-red-400 hover:text-red-600 p-1" title="Remover e deixar avulso"><Trash2 size={14}/></button>
                         </div>
                       </div>
-                      {item.subItems && item.subItems.length > 0 && (
-                        <div className="pl-3 mt-3 mb-3 border-l-2 border-indigo-200 space-y-2">
-                          {item.subItems.map(sub => (
-                            <div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100">
-                              <span className="font-bold text-slate-600 text-xs">+ {sub.qty * item.qty}x {sub.name}</span>
-                              <div className="flex items-center gap-3">
-                                <span className="text-slate-500 text-xs font-medium">R$ {(sub.price * sub.qty * item.qty).toFixed(2)}</span>
-                                <button onClick={() => unlinkItem(item.cartItemId, sub.id)} className="text-red-400 hover:text-red-600 p-1" title="Remover e deixar avulso"><Trash2 size={14}/></button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <input placeholder="Obs (opcional)..." value={item.obs || ''} onChange={e => setCart(cart.map(x => x.cartItemId === item.cartItemId ? { ...x, obs: e.target.value } : x))} className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-lg outline-none focus:border-blue-500 transition-colors mt-2" />
-                      {guestItems.length > 1 && (
-                        <select className="mt-3 w-full text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg p-2.5 outline-none cursor-pointer transition-colors" value="" onChange={(e) => { if (e.target.value) linkItem(item.cartItemId, e.target.value); }}>
-                          <option value="">+ Juntar manualmente com...</option>
-                          {guestItems.filter(other => other.cartItemId !== item.cartItemId).map(other => (<option key={other.cartItemId} value={other.cartItemId}>{other.name} (Qtd: {other.qty})</option>))}
-                        </select>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+                    ))}
+                  </div>
+                )}
+                <input placeholder="Ex: Tirar a cebola..." value={item.obs || ''} onChange={e => setCart(cart.map(x => x.cartItemId === item.cartItemId ? { ...x, obs: e.target.value } : x))} className="w-full text-xs bg-slate-50 border border-slate-200 p-2.5 rounded-lg outline-none focus:border-blue-500 transition-colors mt-2" />
+                {cart.length > 1 && (
+                  <select className="mt-3 w-full text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg p-2.5 outline-none cursor-pointer transition-colors" value="" onChange={(e) => { if (e.target.value) linkItem(item.cartItemId, e.target.value); }}>
+                    <option value="">+ Juntar manualmente com...</option>
+                    {cart.filter(other => other.cartItemId !== item.cartItemId).map(other => (<option key={other.cartItemId} value={other.cartItemId}>{other.name} (Qtd: {other.qty})</option>))}
+                  </select>
+                )}
+              </div>
+            ))}
             {cart.length === 0 && <div className="p-6 text-center text-slate-500 text-sm font-medium">Carrinho vazio</div>}
           </div>
           {cart.length > 0 && (
             <>
-              <div className="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between font-bold text-lg text-slate-800"><span>Total</span><span className="text-blue-600">R$ {total.toFixed(2)}</span></div>
-              <button onClick={sendOrder} disabled={isSubmitting} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all active:scale-95 disabled:opacity-70">{isSubmitting ? 'Enviando...' : <><Send size={20} /> Enviar Pedido</>}</button>
+              <div className="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between font-bold text-lg text-slate-800"><span>Total a Pagar</span><span className="text-blue-600">R$ {total.toFixed(2)}</span></div>
+              <button onClick={sendOrder} disabled={isSubmitting} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all active:scale-95 disabled:opacity-70">
+                {isSubmitting ? 'Gerando...' : <><MessageCircle size={20} /> Enviar pelo WhatsApp</>}
+              </button>
             </>
           )}
         </div>
@@ -1063,45 +1083,6 @@ const MobileView = ({ user, initialRole, onBack }) => {
                   <button onClick={() => setShowAiModal(false)} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold w-full hover:bg-slate-800 transition-colors shadow-lg">Entendido!</button>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Renomear Pessoa */}
-      {renameModal.show && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Nome do Cliente</h3>
-            <input
-              autoFocus
-              value={renameModal.newName}
-              onChange={e => setRenameModal({...renameModal, newName: e.target.value})}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  const finalName = renameModal.newName.trim() || renameModal.oldName;
-                  if (finalName !== renameModal.oldName && !guestList.includes(finalName)) {
-                    setGuestList(guestList.map(g => g === renameModal.oldName ? finalName : g));
-                    if (currentGuest === renameModal.oldName) setCurrentGuest(finalName);
-                    setCart(cart.map(item => item.guest === renameModal.oldName ? { ...item, guest: finalName } : item));
-                  }
-                  setRenameModal({show:false, oldName:'', newName:''});
-                }
-              }}
-              className="w-full border border-slate-300 p-4 rounded-xl mb-6 text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Ex: João"
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setRenameModal({show:false, oldName:'', newName:''})} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
-              <button onClick={() => {
-                const finalName = renameModal.newName.trim() || renameModal.oldName;
-                if (finalName !== renameModal.oldName && !guestList.includes(finalName)) {
-                  setGuestList(guestList.map(g => g === renameModal.oldName ? finalName : g));
-                  if (currentGuest === renameModal.oldName) setCurrentGuest(finalName);
-                  setCart(cart.map(item => item.guest === renameModal.oldName ? { ...item, guest: finalName } : item));
-                }
-                setRenameModal({show:false, oldName:'', newName:''});
-              }} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors">Salvar</button>
             </div>
           </div>
         </div>
@@ -1727,20 +1708,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
     });
   };
 
-  const handleDeleteFutureOrder = async (order) => {
-    setConfirmState({
-      isOpen: true,
-      msg: 'Deseja excluir esta encomenda?',
-      action: async () => {
-        try {
-          await deleteDoc(getDocRef('future_orders', order.firestoreId));
-          setConfirmState({ isOpen: false, msg: '', action: null });
-          showToastMsg("Encomenda excluída.");
-        } catch(e) { console.error(e); }
-      }
-    });
-  };
-
   const changeDate = (days) => { const d = new Date(reportDate); d.setDate(d.getDate() + days); setReportDate(d); };
   const changeWeek = (weeks) => { const d = new Date(reportDate); d.setDate(d.getDate() + (weeks * 7)); setReportDate(d); };
   const changeMonth = (months) => { const d = new Date(reportDate); d.setMonth(d.getMonth() + months); setReportDate(d); };
@@ -2062,9 +2029,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {orders.filter(o => o.paymentStatus === 'ABERTO').map(o => (
                 <div key={o.id} className="bg-white p-5 rounded-2xl shadow-sm border border-indigo-100 relative overflow-hidden group hover:shadow-md transition-shadow">
-                  {o.origin === 'Mobile' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold shadow-sm">Via App</div>}
+                  {o.origin === 'Mobile' || o.origin === 'WhatsApp' ? <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold shadow-sm">App/Site</div> : null}
                   <div className="font-bold text-xl text-indigo-900 mb-1">{o.client}</div>
-                  <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block font-bold mb-3">Garçom: {o.waiter || 'Balcão'}</div>
+                  <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block font-bold mb-3">Origem: {o.waiter || 'Balcão'}</div>
                   <div className="bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
                     <div className="text-sm font-bold text-slate-700 mb-1">{o.items ? o.items.length : 0} Lanches/Bebidas</div>
                     <div className="text-2xl font-black text-slate-800">R$ {Number(o.total).toFixed(2)}</div>
@@ -2102,7 +2069,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                         <li key={idx} className="flex flex-col gap-1 border-b border-slate-200 last:border-0 pb-3 last:pb-0">
                           <div className="flex gap-2 items-start">
                             <span className="font-black text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded text-xs">{i.qty}x</span> 
-                            <span className="font-bold text-slate-700">{i.name} <span className="text-xs font-normal text-slate-500">({i.guest || 'Pessoa 1'})</span></span>
+                            <span className="font-bold text-slate-700">{i.name} {i.guest && !o.client.includes(i.guest) && <span className="text-xs font-normal text-slate-500">({i.guest})</span>}</span>
                           </div>
                           
                           {i.subItems && i.subItems.length > 0 && (
@@ -2593,7 +2560,7 @@ export default function App() {
           <p className="text-center text-slate-500 mb-6 font-medium">Selecione o seu perfil de acesso</p>
           {authError && <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl mb-6 text-xs text-center"><AlertTriangle className="mx-auto mb-2" size={20} />Conexão Firebase Recusada:<br/>{authError}</div>}
           <div className="space-y-4">
-            <button onClick={() => { setInitialRole('Garçom / Cliente'); setRole('mobile'); }} className="w-full flex items-center p-5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl transition-all group"><div className="bg-indigo-500 text-white p-3 rounded-xl mr-4"><MonitorSmartphone size={24} /></div><div className="text-left flex-1 font-bold text-indigo-900 text-lg">App Mobile</div><ChevronRight className="text-indigo-400" /></button>
+            <button onClick={() => { setInitialRole('Garçom / Cliente'); setRole('mobile'); }} className="w-full flex items-center p-5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl transition-all group"><div className="bg-indigo-500 text-white p-3 rounded-xl mr-4"><MonitorSmartphone size={24} /></div><div className="text-left flex-1 font-bold text-indigo-900 text-lg">Cardápio do Cliente</div><ChevronRight className="text-indigo-400" /></button>
             <button onClick={() => { setShowAdminAuth(true); setAdminPasswordInput(''); setAdminError(''); }} className="w-full flex items-center p-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl shadow-lg group"><div className="bg-blue-500 text-white p-3 rounded-xl mr-4"><LayoutDashboard size={24} /></div><div className="text-left flex-1 font-bold text-lg">Painel Administrativo</div><ChevronRight className="text-slate-500" /></button>
           </div>
         </div>
@@ -2618,7 +2585,7 @@ export default function App() {
 
   return (
     <>
-      {role === 'mobile' && <MobileView user={user} initialRole={initialRole} onBack={() => setRole(null)} />}
+      {role === 'mobile' && <MobileView user={user} initialRole={initialRole} onBack={() => setRole(null)} settings={settings} />}
       {role === 'pos' && <PosView user={user} initialRole={initialRole} onBack={() => setRole(null)} initialSettings={settings} />}
     </>
   );
