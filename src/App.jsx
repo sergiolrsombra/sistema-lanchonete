@@ -177,7 +177,6 @@ const handlePrint = (order, settings, type = 'customer') => {
         <div style="margin-bottom: 10px;">
           <p style="margin: 2px 0;">ID: #${order.id || 'N/A'}</p>
           <p style="margin: 2px 0;">Cliente: <span class="bold">${order.client}</span></p>
-          <p style="margin: 2px 0;">Contato: ${order.phone || 'N/A'}</p>
           <p style="margin: 2px 0;">Data/Hora: ${new Date().toLocaleString('pt-BR')}</p>
         </div>
 
@@ -702,14 +701,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       } else {
         const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
         setProducts(list);
-        
-        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
-        fetchedCategories.sort((a, b) => {
-          const indexA = CATEGORIES.indexOf(a);
-          const indexB = CATEGORIES.indexOf(b);
-          return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
-        });
-        setCategories(['Todos', ...fetchedCategories]);
+        setCategories(['Todos', ...CATEGORIES]);
       }
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
@@ -733,10 +725,11 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const addToCart = (p) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
 
-    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão'];
+    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
+    const addonCategories = ['Adicionais'];
 
     // --- LÓGICA DE UNIÃO AUTOMÁTICA ---
-    if (p.category === 'Adicionais' || p.category === 'Diversos') {
+    if (addonCategories.includes(p.category)) {
       const reversedCart = [...cart].reverse();
       const parentIdxInReversed = reversedCart.findIndex(i => baseCategories.includes(i.category));
       
@@ -760,10 +753,10 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         return;
       }
     } else if (baseCategories.includes(p.category)) {
-      const orphanAddons = cart.filter(i => (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
+      const orphanAddons = cart.filter(i => addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0));
       
       if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !((i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i => !(addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)));
         
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
@@ -1194,14 +1187,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       } else {
         const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); 
         setProducts(list); 
-        
-        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
-        fetchedCategories.sort((a, b) => {
-          const indexA = CATEGORIES.indexOf(a);
-          const indexB = CATEGORIES.indexOf(b);
-          return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
-        });
-        setCategories(['Todos', ...fetchedCategories]);
+        setCategories(['Todos', ...CATEGORIES]);
       } 
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
@@ -1226,10 +1212,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const addToCart = (p) => { 
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; } 
     
-    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão'];
+    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
+    const addonCategories = ['Adicionais'];
 
     // --- LÓGICA DE UNIÃO AUTOMÁTICA NO POS ---
-    if (p.category === 'Adicionais' || p.category === 'Diversos') {
+    if (addonCategories.includes(p.category)) {
       const reversedCart = [...cart].reverse();
       const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
       
@@ -1253,10 +1240,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
         return;
       }
     } else if (baseCategories.includes(p.category)) {
-      const orphanAddons = cart.filter(i => i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
+      const orphanAddons = cart.filter(i => i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0));
       
       if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !(i.guest === currentGuest && (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i => !(i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)));
         
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
@@ -2218,198 +2205,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL PAGAMENTO COM TROCO */}
-        {showPaymentModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
-                <h3 className="font-bold text-xl">Finalizar Venda</h3>
-                <button onClick={() => setShowPaymentModal(false)}><X/></button>
-              </div>
-              <div className="p-6 space-y-4">
-                
-                {uniqueGuestsInTab.length > 1 && (
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-3">O que deseja pagar agora?</label>
-                    <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-                       <button onClick={() => { setPayingGuest('Mesa Completa'); setPartialPayments([]); setPaymentInputValue(''); }} className={`px-5 py-2.5 rounded-xl text-sm font-bold border transition-colors shrink-0 ${payingGuest === 'Mesa Completa' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'}`}>Tudo (Completa)</button>
-                       {uniqueGuestsInTab.map(g => (
-                         <button key={g} onClick={() => { setPayingGuest(g); setPartialPayments([]); setPaymentInputValue(''); }} className={`px-5 py-2.5 rounded-xl text-sm font-bold border transition-colors shrink-0 ${payingGuest === g ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'}`}>{g}</button>
-                       ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm max-h-48 overflow-y-auto mb-2">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Resumo do Consumo ({payingGuest})</h4>
-                  <div className="space-y-3">
-                    {itemsToPayLive.map(item => (
-                      <div key={item.cartItemId || Math.random()} className="flex justify-between items-start text-sm border-b border-slate-50 pb-2 last:border-0 last:pb-0">
-                        <div className="flex gap-2">
-                          <span className="font-black text-blue-600">{item.qty}x</span>
-                          <span className="font-bold text-slate-700">
-                            {item.name}
-                            {item.subItems?.map(sub => (
-                              <span key={sub.id} className="block text-xs font-medium text-slate-500">+ {sub.qty * item.qty}x {sub.name}</span>
-                            ))}
-                          </span>
-                        </div>
-                        <span className="font-black text-slate-800">{formatMoney(calcItemTotal(item))}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-slate-100 p-5 rounded-2xl flex justify-between items-center">
-                  <span className="font-bold text-slate-500 uppercase">Total a Receber</span>
-                  <span className="text-3xl font-black text-blue-600">{formatMoney(modalTotal)}</span>
-                </div>
-                
-                <div className="space-y-3">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Valor Recebido (Dinheiro)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-3.5 text-slate-400 font-bold">R$</span>
-                    <input type="number" step="0.01" value={paymentInputValue} onChange={e => setPaymentInputValue(e.target.value)} className="w-full pl-12 p-4 border rounded-2xl text-xl font-black outline-none focus:ring-4 focus:ring-blue-100" placeholder="0,00" />
-                  </div>
-                  
-                  {liveChange > 0 && (
-                    <div className="bg-emerald-50 p-4 rounded-2xl border-2 border-emerald-200 animate-in slide-in-from-top-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-emerald-700">TROCO PARA O CLIENTE:</span>
-                        <span className="text-2xl font-black text-emerald-800">{formatMoney(liveChange)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {['Dinheiro', 'Pix', 'Crédito', 'Débito'].map(m => (
-                    <button key={m} onClick={() => {
-                      const received = paymentInputValue ? parseFloat(paymentInputValue.replace(',', '.')) : modalRemaining;
-                      const valueToBill = Math.min(received, modalRemaining);
-                      const change = Math.max(0, received - modalRemaining);
-                      
-                      const newPayment = { method: m, value: valueToBill, receivedValue: m === 'Dinheiro' ? received : valueToBill, changeValue: m === 'Dinheiro' ? change : 0 };
-                      const updatedPayments = [...partialPayments, newPayment];
-                      setPartialPayments(updatedPayments);
-                      setPaymentInputValue('');
-                      
-                      const newPaidTotal = updatedPayments.reduce((acc, p) => acc + p.value, 0);
-                      if (newPaidTotal >= modalTotal - 0.01) {
-                        finalizeOrder(customerName || 'Balcão', 'PAGO', updatedPayments);
-                      }
-                    }} className="py-4 border rounded-xl font-bold hover:bg-slate-50 transition-colors">{m}</button>
-                  ))}
-                </div>
-
-                {!selectedTabToSettle && partialPayments.length === 0 && (
-                  <div className="pt-6 border-t border-slate-100 mt-2">
-                    <div className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2"><ClipboardList size={14}/> Ou Pendurar na Mesa</div>
-                    <div className="grid grid-cols-5 gap-2 mb-4">
-                      {MESAS.map(m => {
-                        const occupied = orders.some(o => o?.client === m && o?.paymentStatus === 'ABERTO');
-                        return (
-                          <button
-                            key={m}
-                            onClick={() => finalizeOrder(m, 'ABERTO')}
-                            className={`py-2.5 text-xs font-bold rounded-lg border transition-all active:scale-95 ${occupied ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                          >
-                            {m.replace('Mesa ', '')}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <div className="flex gap-3">
-                      <input placeholder="Nome Cliente (Comanda Balcão)" value={customerName} onChange={e => setCustomerName(e.target.value)} className="flex-1 border border-slate-300 p-3 rounded-xl text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all" />
-                      <button onClick={() => finalizeOrder(customerName, 'ABERTO')} disabled={!customerName} className="bg-orange-500 hover:bg-orange-600 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50 transition-colors shadow-lg shadow-orange-500/20 active:scale-95">Abrir Conta</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL ENCOMENDA SELECIONADA */}
-        {selectedFutureOrder && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="p-6 bg-slate-900 text-white flex justify-between items-center"><h3 className="font-bold text-xl">{selectedFutureOrder.client}</h3><button onClick={() => setSelectedFutureOrder(null)} className="hover:bg-slate-800 p-2 rounded-full transition-colors"><X size={20} /></button></div>
-              <div className="p-6 bg-slate-50">
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 shadow-sm">
-                  <div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-slate-500">Valor Total</span><span className="font-bold text-slate-800">R$ {selectedFutureOrder.total.toFixed(2)}</span></div>
-                  <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold text-slate-500">Sinal Pago</span><span className="font-bold text-green-600">R$ {(selectedFutureOrder.signal || 0).toFixed(2)}</span></div>
-                  <div className="pt-4 border-t border-slate-100 flex justify-between items-center"><span className="text-sm font-black uppercase text-slate-800">Restante a Pagar</span><span className="font-black text-red-500 text-2xl">R$ {(selectedFutureOrder.total - (selectedFutureOrder.signal || 0)).toFixed(2)}</span></div>
-                </div>
-                
-                <button onClick={() => handlePrint(selectedFutureOrder, settings, 'customer')} className="w-full mb-6 bg-white border border-slate-300 text-slate-700 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors shadow-sm"><Printer size={18} /> Imprimir Comprovante / PDF</button>
-                
-                {selectedFutureOrder.status !== 'Concluído' ? (
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <h4 className="font-bold text-slate-800 text-sm">Recebimento Final</h4>
-                    <input type="number" step="0.01" placeholder="Valor Recebido" className="w-full p-3.5 border border-slate-300 rounded-xl font-bold text-lg outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100 transition-all text-center" value={settleValue} onChange={e => setSettleValue(e.target.value)} />
-                    <div className="grid grid-cols-3 gap-2">{['Pix', 'Dinheiro', 'Cartão'].map(m => (<button key={m} onClick={() => setSettleMethod(m)} className={`py-2.5 rounded-lg text-sm font-bold border transition-colors ${settleMethod === m ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{m}</button>))}</div>
-                    <button onClick={handleSettleOrder} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-green-600/20 mt-2 transition-all active:scale-95">Confirmar e Entregar Pedido</button>
-                  </div>
-                ) : <div className="text-center py-6 text-green-600 font-black bg-green-50 rounded-2xl border border-green-200 text-lg flex items-center justify-center gap-2"><CheckCircle2 size={24}/> Encomenda Finalizada!</div>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL MOVIMENTAÇÃO */}
-        {showCashMovementModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-              <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl text-slate-800">Nova Movimentação</h3><button onClick={() => setShowCashMovementModal(false)} className="hover:bg-slate-100 p-2 rounded-full transition-colors"><X size={20} className="text-slate-500" /></button></div>
-              <div className="flex bg-slate-100 p-1.5 rounded-xl mb-6"><button onClick={() => setMovementType('suprimento')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${movementType === 'suprimento' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Suprimento (Entrada)</button><button onClick={() => setMovementType('sangria')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${movementType === 'sangria' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Sangria (Saída)</button></div>
-              <div className="mb-4"><label className="text-xs font-bold text-slate-500 uppercase block mb-2">Valor (R$)</label><input type="number" step="0.01" autoFocus value={movementValue} onChange={e => setMovementValue(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl text-xl font-black text-center outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" placeholder="0.00" /></div>
-              <div className="mb-8"><label className="text-xs font-bold text-slate-500 uppercase block mb-2">Descrição / Motivo</label><input type="text" value={movementDesc} onChange={e => setMovementDesc(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-medium" placeholder="Ex: Troco inicial, pagamento fornecedor..." /></div>
-              <button onClick={handleAddCashMovement} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-xl shadow-indigo-600/20 active:scale-95 text-lg">Confirmar Registro</button>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL NOVA ENCOMENDA */}
-        {showOrderModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95">
-              <div className="p-6 bg-pink-600 text-white flex justify-between items-center"><h3 className="font-bold text-xl flex items-center gap-3"><Cake size={24}/> {editingFutureOrder ? 'Editar Encomenda' : 'Nova Encomenda'}</h3><button onClick={() => setShowOrderModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-colors"><X size={24} /></button></div>
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-5">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome do Cliente</label><input ref={clientRef} value={orderClient} onChange={e => setOrderClient(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, phoneRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold text-slate-800" placeholder="Ex: Maria Silva" autoFocus /></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Telefone</label><input ref={phoneRef} value={orderPhone} onChange={e => setOrderPhone(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, dateRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" placeholder="(00) 00000-0000" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Data de Entrega</label><input ref={dateRef} type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, timeRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" /></div></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Horário</label><input ref={timeRef} type="time" value={orderTime} onChange={e => setOrderTime(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, totalRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" /></div><div><label className="block text-xs font-black text-pink-700 uppercase mb-2">Valor Total (R$)</label><input ref={totalRef} type="number" step="0.01" value={orderTotalValue} onChange={e => setOrderTotalValue(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, obsRef)} className="w-full p-3.5 border-2 border-pink-300 bg-pink-50 rounded-xl outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-200 transition-all font-black text-pink-700 text-lg" placeholder="0.00" /></div></div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex justify-between items-center">
-                    Detalhes da Produção
-                    <button onClick={handleImproveDescription} disabled={isAiLoading} className="text-pink-600 hover:text-pink-800 flex items-center gap-1.5 text-xs font-bold bg-pink-100 px-3 py-1 rounded-full hover:bg-pink-200 disabled:opacity-50 transition-colors">
-                      {isAiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} Melhorar com IA
-                    </button>
-                  </label>
-                  <textarea ref={obsRef} value={orderObs} onChange={e => setOrderObs(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalRef)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all h-32 resize-none text-sm" placeholder="Ex: Bolo massa de chocolate, recheio de brigadeiro com morango, cobertura de chantininho. Tema: Festa Infantil (Homem-Aranha). Escrever Parabéns João..." />
-                </div>
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between items-center mb-4"><label className="block text-sm font-black text-slate-700 uppercase">Sinal (Adiantamento)</label><span className="text-sm font-black text-pink-600 bg-pink-50 px-3 py-1 rounded-lg">Falta Receber: {formatMoney((parseFloat(orderTotalValue) || 0) - (parseFloat(orderSignal) || 0))}</span></div><div className="grid grid-cols-2 gap-4"><input ref={signalRef} type="number" step="0.01" value={orderSignal} onChange={e => setOrderSignal(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalMethodRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold" placeholder="Valor Pago R$" /><select ref={signalMethodRef} value={orderSignalMethod} onChange={e => setOrderSignalMethod(e.target.value)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all bg-white font-bold"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão">Cartão</option></select></div></div>
-              </div>
-              <div className="p-5 bg-white border-t border-slate-200 flex justify-end gap-3"><button onClick={() => setShowOrderModal(false)} className="px-6 py-3.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Cancelar</button><button onClick={saveFutureOrder} className="px-10 py-3.5 rounded-xl font-black bg-pink-600 text-white hover:bg-pink-700 shadow-lg shadow-pink-600/30 transition-all active:scale-95 text-lg">Salvar Encomenda</button></div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL EDITAR PRODUTO */}
-        {editingProduct && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="text-xl font-bold text-slate-800">Editar Produto</h3><button onClick={() => setEditingProduct(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button></div>
-              <div className="p-6 space-y-5 bg-white">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800 bg-white">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div></div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"><label className="block text-xs font-bold text-slate-500 uppercase mb-3 text-center">Quantidade em Estoque</label><div className="flex items-center justify-center gap-4"><button onClick={() => setEditingProduct({ ...editingProduct, stock: Math.max(0, editingProduct.stock - 1) })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-red-500 shadow-sm transition-all active:scale-90"><Minus size={20} /></button><input type="number" value={editingProduct.stock} onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })} className="w-24 p-3 border border-slate-300 bg-white rounded-xl focus:border-blue-500 outline-none text-center font-black text-xl" /><button onClick={() => setEditingProduct({ ...editingProduct, stock: editingProduct.stock + 1 })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-green-600 shadow-sm transition-all active:scale-90"><Plus size={20} /></button></div></div>
-                <div className="pt-6 flex gap-3 border-t border-slate-100"><button onClick={handleDeleteProduct} className="p-3.5 bg-red-50 text-red-600 font-bold hover:bg-red-100 rounded-xl transition-colors border border-red-100" title="Excluir Produto"><Trash2 size={20} /></button><button onClick={() => setEditingProduct(null)} className="flex-1 py-3.5 text-slate-600 bg-slate-100 font-bold hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button><button onClick={handleUpdateProduct} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95">Salvar</button></div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* MODAL SUCESSO E IMPRESSÃO DE RECIBO */}
         {finalizedOrder && (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
@@ -2480,6 +2275,45 @@ const PosView = ({ user, onBack, initialSettings }) => {
               }} className="flex-[2] py-8 text-3xl font-black bg-orange-500 text-white hover:bg-orange-600 rounded-3xl shadow-xl shadow-orange-500/30 transition-all active:scale-95 flex items-center justify-center gap-3">
                 <CheckSquare size={40}/> Marcar como Pronto
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Renomear Pessoa (POS) */}
+        {renameModal.show && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+              <h3 className="text-xl font-bold text-slate-800 mb-4">Nome do Cliente</h3>
+              <input
+                autoFocus
+                value={renameModal.newName}
+                onChange={e => setRenameModal({...renameModal, newName: e.target.value})}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const finalName = renameModal.newName.trim() || renameModal.oldName;
+                    if (finalName !== renameModal.oldName && !guestList.includes(finalName)) {
+                      setGuestList(guestList.map(g => g === renameModal.oldName ? finalName : g));
+                      if (currentGuest === renameModal.oldName) setCurrentGuest(finalName);
+                      setCart(cart.map(item => item.guest === renameModal.oldName ? { ...item, guest: finalName } : item));
+                    }
+                    setRenameModal({show:false, oldName:'', newName:''});
+                  }
+                }}
+                className="w-full border border-slate-300 p-4 rounded-xl mb-6 text-lg font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Ex: João"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setRenameModal({show:false, oldName:'', newName:''})} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancelar</button>
+                <button onClick={() => {
+                  const finalName = renameModal.newName.trim() || renameModal.oldName;
+                  if (finalName !== renameModal.oldName && !guestList.includes(finalName)) {
+                    setGuestList(guestList.map(g => g === renameModal.oldName ? finalName : g));
+                    if (currentGuest === renameModal.oldName) setCurrentGuest(finalName);
+                    setCart(cart.map(item => item.guest === renameModal.oldName ? { ...item, guest: finalName } : item));
+                  }
+                  setRenameModal({show:false, oldName:'', newName:''});
+                }} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors">Salvar</button>
+              </div>
             </div>
           </div>
         )}
