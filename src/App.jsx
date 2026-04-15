@@ -141,7 +141,7 @@ const handlePrint = (order, settings, type = 'customer') => {
   
   let itemsHtml = '';
   order.items?.forEach(i => {
-    const guestLabel = (i.guest && type === 'customer' && !order.client.includes('Pessoa')) ? ` <span style="font-size:0.8em; color:#666;">(${i.guest})</span>` : '';
+    const guestLabel = (i.guest && type === 'customer' && !order.client?.includes('Pessoa')) ? ` <span style="font-size:0.8em; color:#666;">(${i.guest})</span>` : '';
     itemsHtml += `
       <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
         <span style="font-weight: bold;">${i.qty}x ${i.name}${guestLabel}</span>
@@ -842,32 +842,52 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         }
       });
 
-      const orderData = { 
-        id: orderCounter, 
-        client: customerName,
-        phone: customerPhone,
-        orderType: orderType,
-        waiter: 'WhatsApp', 
-        items: cart, 
-        total: getCartTotal(), 
-        status: 'ABERTO', 
-        paymentStatus: 'ABERTO', 
-        kitchenStatus: 'Pendente', 
-        method: 'Aguardando', 
-        date: new Date().toISOString(), 
-        time: new Date().toLocaleTimeString().slice(0, 5), 
-        origin: 'WhatsApp' 
-      };
+      const cartWithStatus = cart.map(item => ({ ...item, kitchenStatus: 'Pendente' }));
 
-      await addDoc(getCollectionRef('orders'), orderData);
+      const ordersSnap = await getDocs(query(getCollectionRef('orders')));
+      const existingDoc = ordersSnap.docs.find(d => {
+        const data = d.data();
+        return data.paymentStatus === 'ABERTO' && data.client?.toLowerCase().trim() === customerName?.toLowerCase().trim();
+      });
+
+      let msg = '';
+
+      if (existingDoc) {
+        const existingData = existingDoc.data();
+        await updateDoc(getDocRef('orders', existingDoc.id), {
+          items: [...(existingData.items || []), ...cartWithStatus],
+          total: (existingData.total || 0) + getCartTotal(),
+          kitchenStatus: 'Pendente',
+          updatedAt: new Date().toISOString()
+        });
+        msg = `*ADICIONANDO AO PEDIDO - ${settings?.storeName}*\n\n`;
+      } else {
+        const orderData = { 
+          id: orderCounter, 
+          client: customerName,
+          phone: customerPhone,
+          orderType: orderType,
+          waiter: 'WhatsApp', 
+          items: cartWithStatus, 
+          total: getCartTotal(), 
+          status: 'ABERTO', 
+          paymentStatus: 'ABERTO', 
+          kitchenStatus: 'Pendente', 
+          method: 'Aguardando', 
+          date: new Date().toISOString(), 
+          time: new Date().toLocaleTimeString().slice(0, 5), 
+          origin: 'WhatsApp' 
+        };
+        await addDoc(getCollectionRef('orders'), orderData);
+        msg = `*NOVO PEDIDO - ${settings?.storeName}*\n\n`;
+      }
+
       await batch.commit();
 
-      // Formatar Mensagem para o WhatsApp
-      let msg = `*NOVO PEDIDO - ${settings?.storeName}*\n\n`;
       msg += `👤 *Cliente:* ${customerName}\n`;
       if (customerPhone) msg += `📞 *Contato:* ${customerPhone}\n`;
       msg += `🛵 *Tipo:* ${orderType}\n\n`;
-      msg += `*ITENS DO PEDIDO:*\n`;
+      msg += `*ITENS ${existingDoc ? 'ADICIONADOS' : 'DO PEDIDO'}:*\n`;
       cart.forEach(item => {
          msg += `👉 ${item.qty}x ${item.name} - R$ ${calcItemTotal(item).toFixed(2)}\n`;
          item.subItems?.forEach(sub => {
@@ -875,8 +895,8 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
          });
          if (item.obs) msg += `   *Obs:* ${item.obs}\n`;
       });
-      msg += `\n💰 *TOTAL: R$ ${getCartTotal().toFixed(2)}*\n\n`;
-      msg += `Aguardo a chave PIX e confirmação do pedido!`;
+      msg += `\n💰 *VALOR DESTA ADIÇÃO: R$ ${getCartTotal().toFixed(2)}*\n\n`;
+      msg += `Aguardo a confirmação do pedido!`;
 
       const storePhoneNumber = settings?.phone?.replace(/\D/g, '') || '';
       if (storePhoneNumber) {
@@ -1345,14 +1365,16 @@ const PosView = ({ user, onBack, initialSettings }) => {
     // Lógica para divisão de conta (Partial Payment via Guest)
     const isPartialPayment = payingGuest !== 'Mesa Completa';
     
+    const cartWithStatus = cart.map(i => ({ ...i, kitchenStatus: 'Pendente' }));
+
     const safeTabItems = selectedTabToSettle?.items || [];
     const itemsToPay = selectedTabToSettle 
         ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : safeTabItems) 
-        : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cart);
+        : (isPartialPayment ? cartWithStatus.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cartWithStatus);
     
     const itemsToKeep = selectedTabToSettle 
         ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : [])
-        : (isPartialPayment ? cart.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
+        : (isPartialPayment ? cartWithStatus.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
 
     const totalOrder = itemsToPay.reduce((acc, item) => acc + calcItemTotal(item), 0);
 
@@ -1379,19 +1401,19 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
     try {
       if (status === 'ABERTO') {
-        const existing = orders.find(o => o.client === client && o.paymentStatus === 'ABERTO');
+        const existing = orders.find(o => o.client?.toLowerCase().trim() === client?.toLowerCase().trim() && o.paymentStatus === 'ABERTO');
         if (existing) {
           await updateDoc(getDocRef('orders', existing.firestoreId), { 
-            items: [...existing.items, ...cart], 
-            total: existing.total + getCartTotal(), 
+            items: [...(existing.items || []), ...cartWithStatus], 
+            total: (existing.total || 0) + getCartTotal(), 
             kitchenStatus: 'Pendente', 
             updatedAt: nowISO 
           });
-          showToastMsg(`Comanda de ${client} atualizada!`);
+          showToastMsg(`Itens adicionados à comanda de ${client}!`);
         } else {
           await addDoc(getCollectionRef('orders'), { 
             id: orderCounter, 
-            items: cart, 
+            items: cartWithStatus, 
             total: getCartTotal(), 
             status: 'ABERTO', 
             paymentStatus: 'ABERTO', 
@@ -1817,13 +1839,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
       <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-6 fixed h-full left-0 z-10 shadow-2xl justify-between">
         <div className="flex flex-col items-center gap-4 w-full mt-4">
           <div onClick={onBack} className="p-2 bg-amber-500 rounded-lg mb-2 cursor-pointer hover:bg-amber-400 transition-colors" title="Sair"><Store size={20} className="text-slate-900" /></div>
-          <button onClick={() => setView('pos')} className={`p-2 rounded-xl transition-all ${view === 'pos' ? 'bg-blue-600 shadow-lg shadow-blue-500/50' : 'text-slate-400 hover:text-white'}`}><ShoppingCart size={20} /></button>
-          <button onClick={() => setView('tabs')} className={`p-2 rounded-xl relative transition-all ${view === 'tabs' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/50' : 'text-slate-400 hover:text-white'}`}><ClipboardList size={20} />{orders.filter(o => o.paymentStatus === 'ABERTO').length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full shadow-sm shadow-red-500"></span>}</button>
-          <button onClick={() => setView('kitchen')} className={`p-2 rounded-xl relative transition-all ${view === 'kitchen' ? 'bg-orange-600 shadow-lg shadow-orange-500/50' : 'text-slate-400 hover:text-white'}`}><ChefHat size={20} />{orders.filter(o => o.kitchenStatus === 'Pendente').length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full animate-pulse shadow-sm shadow-red-500"></span>}</button>
-          <button onClick={() => setView('orders')} className={`p-2 rounded-xl transition-all ${view === 'orders' ? 'bg-pink-600 shadow-lg shadow-pink-500/50' : 'text-slate-400 hover:text-white'}`}><Cake size={20} /></button>
-          <button onClick={() => setView('cash')} className={`p-2 rounded-xl transition-all ${view === 'cash' ? 'bg-emerald-600 shadow-lg shadow-emerald-500/50' : 'text-slate-400 hover:text-white'}`}><Coins size={20} /></button>
-          <button onClick={() => setView('admin')} className={`p-2 rounded-xl transition-all ${view === 'admin' ? 'bg-purple-600 shadow-lg shadow-purple-500/50' : 'text-slate-400 hover:text-white'}`}><LayoutDashboard size={20} /></button>
-          <button onClick={handleSettingsAccess} className={`p-2 rounded-xl transition-all ${view === 'settings' ? 'bg-gray-600 text-white shadow-lg shadow-gray-500/50' : 'text-slate-400 hover:text-white'}`}><Settings size={20} /></button>
+          <button onClick={() => setView('pos')} className={`p-2 rounded-xl transition-all ${view === 'pos' ? 'bg-blue-600 shadow-lg shadow-blue-500/50' : 'text-slate-400 hover:text-white'}`} title="Caixa (PDV)"><ShoppingCart size={20} /></button>
+          <button onClick={() => setView('tabs')} className={`p-2 rounded-xl relative transition-all ${view === 'tabs' ? 'bg-indigo-600 shadow-lg shadow-indigo-500/50' : 'text-slate-400 hover:text-white'}`} title="Comandas"><ClipboardList size={20} />{orders.filter(o => o.paymentStatus === 'ABERTO').length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full shadow-sm shadow-red-500"></span>}</button>
+          <button onClick={() => setView('kitchen')} className={`p-2 rounded-xl relative transition-all ${view === 'kitchen' ? 'bg-orange-600 shadow-lg shadow-orange-500/50' : 'text-slate-400 hover:text-white'}`} title="Cozinha"><ChefHat size={20} />{orders.filter(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)).length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full animate-pulse shadow-sm shadow-red-500"></span>}</button>
+          <button onClick={() => setView('orders')} className={`p-2 rounded-xl transition-all ${view === 'orders' ? 'bg-pink-600 shadow-lg shadow-pink-500/50' : 'text-slate-400 hover:text-white'}`} title="Encomendas"><Cake size={20} /></button>
+          <button onClick={() => setView('cash')} className={`p-2 rounded-xl transition-all ${view === 'cash' ? 'bg-emerald-600 shadow-lg shadow-emerald-500/50' : 'text-slate-400 hover:text-white'}`} title="Fluxo de Caixa"><Coins size={20} /></button>
+          <button onClick={() => setView('admin')} className={`p-2 rounded-xl transition-all ${view === 'admin' ? 'bg-purple-600 shadow-lg shadow-purple-500/50' : 'text-slate-400 hover:text-white'}`} title="Gestão de Produtos"><LayoutDashboard size={20} /></button>
+          <button onClick={handleSettingsAccess} className={`p-2 rounded-xl transition-all ${view === 'settings' ? 'bg-gray-600 text-white shadow-lg shadow-gray-500/50' : 'text-slate-400 hover:text-white'}`} title="Configurações"><Settings size={20} /></button>
         </div>
       </div>
 
@@ -1912,7 +1934,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="flex-1 p-6 overflow-y-auto bg-slate-50">
               <h1 className="text-2xl font-bold mb-6 text-slate-800">Novo Pedido (Balcão)</h1>
 
-              {/* BARRA DE FILTRO E PESQUISA - IGUAL AO MOBILE */}
               <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl">
                 <div className="flex gap-2 mb-3">
                   <div className="relative flex-1">
@@ -1927,7 +1948,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 </div>
               </div>
 
-              {/* Selecionador de Pessoas no POS */}
               <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar">
                 <Users size={18} className="text-slate-400 mr-1 shrink-0" />
                 {guestList.map(g => (
@@ -1966,7 +1986,32 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
             
             <div className="w-96 bg-white border-l border-slate-200 shadow-xl flex flex-col z-10">
-              <div className="p-5 border-b bg-slate-50 font-bold text-lg flex gap-2 items-center text-slate-800"><ShoppingCart size={22} className="text-blue-600" /> Carrinho</div>
+              <div className="p-5 border-b bg-slate-50">
+                <div className="font-bold text-lg flex gap-2 items-center text-slate-800 mb-4"><ShoppingCart size={22} className="text-blue-600" /> Carrinho</div>
+                
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Vincular Cliente/Mesa:</label>
+                  <input 
+                    placeholder="Nome ou Mesa..." 
+                    value={customerName} 
+                    onChange={e => setCustomerName(e.target.value)} 
+                    className="w-full border border-slate-300 p-2.5 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 font-bold text-slate-700" 
+                  />
+                  {orders.filter(o => o.paymentStatus === 'ABERTO').length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1 pt-1 hide-scrollbar">
+                      {orders.filter(o => o.paymentStatus === 'ABERTO').map(o => (
+                        <button 
+                          key={o.id}
+                          onClick={() => setCustomerName(o.client)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors border ${customerName.toLowerCase().trim() === o.client?.toLowerCase().trim() ? 'bg-indigo-100 border-indigo-300 text-indigo-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          {o.client}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
               
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
                 {guestList.map(g => {
@@ -2029,36 +2074,15 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   <span className="text-slate-500 font-bold uppercase text-sm">Total a Pagar</span>
                   <span className="text-3xl font-black text-blue-600">R$ {cartTotal.toFixed(2)}</span>
                 </div>
-                <button onClick={() => { if (cart.length > 0) { setSelectedTabToSettle(null); setCustomerName(''); setPartialPayments([]); setPaymentInputValue(''); setPayingGuest('Mesa Completa'); setShowPaymentModal(true); } }} disabled={cart.length === 0} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50 transition-all shadow-lg shadow-slate-900/20 active:scale-95">PAGAR AGORA</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {view === 'orders' && (
-          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
-            <header className="mb-8 flex justify-between items-center"><h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><Cake size={32} className="text-pink-600" /> Encomendas e Bolos</h1><button onClick={() => { setEditingFutureOrder(null); setOrderClient(''); setOrderPhone(''); setOrderObs(''); setOrderSignal(''); setOrderTotalValue(''); setShowOrderModal(true); }} className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-600/20 flex items-center gap-2 active:scale-95 transition-all"><PlusCircle size={20} /> Nova Encomenda</button></header>
-            <div className="grid grid-cols-4 gap-4 mb-8">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Hoje</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.day)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Semana</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.week)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Mês</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.month)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Ano</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.year)}</div></div>
-            </div>
-            <div className="space-y-4">{futureOrders.map(order => (
-              <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all cursor-pointer relative group">
-                {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
-                <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800">{order.client}</h3><div className="flex items-center gap-2 mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button></div></div><div className="text-right mr-10 md:mr-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição da Produção</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description || 'Sem detalhes.'}</p></div>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Edit3 size={14}/> Editar</button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteFutureOrder(order); }} className="text-xs text-red-500 hover:text-red-700 font-bold z-10 px-4 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
-                  </div>
+                <div className="flex flex-col gap-3">
+                  {customerName && (
+                    <button onClick={() => finalizeOrder(customerName, 'ABERTO')} disabled={cart.length === 0} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2">
+                      <ListPlus size={18}/> Lançar na Comanda
+                    </button>
+                  )}
+                  <button onClick={() => { if (cart.length > 0) { setSelectedTabToSettle(null); setPartialPayments([]); setPaymentInputValue(''); setPayingGuest('Mesa Completa'); setShowPaymentModal(true); } }} disabled={cart.length === 0} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50 transition-all shadow-lg shadow-slate-900/20 active:scale-95">COBRAR AGORA</button>
                 </div>
               </div>
-            ))}
-            {futureOrders.length === 0 && <div className="text-center text-slate-400 py-10 font-medium">Nenhuma encomenda registrada.</div>}
             </div>
           </div>
         )}
@@ -2094,8 +2118,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
           <div className="p-8 h-screen overflow-y-auto bg-slate-50">
             <h1 className="text-3xl font-bold mb-8 text-slate-800 flex items-center gap-3"><ChefHat size={32} className="text-orange-500" /> Painel da Cozinha</h1>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {orders.filter(o => o.kitchenStatus === 'Pendente').map(o => (
-                <div key={o.id} className="bg-white border-l-4 border-orange-500 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+              {orders.filter(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)).map(o => {
+                const pendingItems = o.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || [];
+                return (
+                <div key={o.firestoreId} className="bg-white border-l-4 border-orange-500 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <span className="font-bold text-lg text-slate-800 block leading-tight">{o.client}</span>
@@ -2105,11 +2131,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-100 min-h-[100px]">
                     <ul className="text-sm space-y-2">
-                      {o.items && o.items.map((i, idx) => (
+                      {pendingItems.map((i, idx) => (
                         <li key={idx} className="flex flex-col gap-1 border-b border-slate-200 last:border-0 pb-3 last:pb-0">
                           <div className="flex gap-2 items-start">
                             <span className="font-black text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded text-xs">{i.qty}x</span> 
-                            <span className="font-bold text-slate-700">{i.name} {i.guest && !o.client.includes(i.guest) && <span className="text-xs font-normal text-slate-500">({i.guest})</span>}</span>
+                            <span className="font-bold text-slate-700">{i.name} {i.guest && !o.client?.includes(i.guest) && <span className="text-xs font-normal text-slate-500">({i.guest})</span>}</span>
                           </div>
                           
                           {i.subItems && i.subItems.length > 0 && (
@@ -2134,20 +2160,47 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   <div className="flex gap-2">
                     <button onClick={() => setKitchenExpandedOrder(o)} className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold shadow-sm transition-colors hover:bg-slate-50 flex items-center justify-center gap-2"><Maximize size={18}/> Ampliar</button>
                     <button onClick={() => {
-                       updateDoc(getDocRef('orders', o.firestoreId), { kitchenStatus: 'Pronto' });
+                       const updatedItems = (o.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                       updateDoc(getDocRef('orders', o.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
                        showToastMsg(`Pedido #${String(o.id).slice(0,4)} finalizado na cozinha.`);
                     }} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 transition-colors active:scale-95 flex items-center justify-center gap-2"><CheckSquare size={18}/> Pronto</button>
                   </div>
                 </div>
-              ))}
-              {orders.filter(o => o.kitchenStatus === 'Pendente').length === 0 && (
+              )})}
+              {orders.filter(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)).length === 0 && (
                 <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhum pedido pendente na cozinha.</div>
               )}
             </div>
           </div>
         )}
-        
-        {view === 'cash' && <CashControl user={user} orders={orders} />}
+
+        {view === 'orders' && (
+          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
+            <header className="mb-8 flex justify-between items-center"><h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><Cake size={32} className="text-pink-600" /> Encomendas e Bolos</h1><button onClick={() => { setEditingFutureOrder(null); setOrderClient(''); setOrderPhone(''); setOrderObs(''); setOrderSignal(''); setOrderTotalValue(''); setShowOrderModal(true); }} className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-600/20 flex items-center gap-2 active:scale-95 transition-all"><PlusCircle size={20} /> Nova Encomenda</button></header>
+            <div className="grid grid-cols-4 gap-4 mb-8">
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Hoje</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.day)}</div></div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Semana</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.week)}</div></div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Mês</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.month)}</div></div>
+              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Ano</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.year)}</div></div>
+            </div>
+            <div className="space-y-4">{futureOrders.map(order => (
+              <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all cursor-pointer relative group">
+                {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
+                <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800">{order.client}</h3><div className="flex items-center gap-2 mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button></div></div><div className="text-right mr-10 md:mr-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição da Produção</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description || 'Sem detalhes.'}</p></div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Edit3 size={14}/> Editar</button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteFutureOrder(order); }} className="text-xs text-red-500 hover:text-red-700 font-bold z-10 px-4 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {futureOrders.length === 0 && <div className="text-center text-slate-400 py-10 font-medium">Nenhuma encomenda registrada.</div>}
+            </div>
+          </div>
+        )}
 
         {view === 'admin' && (
           <div className="p-8 h-screen overflow-y-auto bg-slate-50">
@@ -2258,13 +2311,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL PAGAMENTO COM TROCO */}
+        {/* MODAL PAGAMENTO COM TROCO (POS) */}
         {showPaymentModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
               <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
                 <h3 className="font-bold text-xl">Finalizar Venda</h3>
-                <button onClick={() => setShowPaymentModal(false)}><X/></button>
+                <button onClick={() => setShowPaymentModal(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors"><X/></button>
               </div>
               <div className="p-6 space-y-4">
                 
@@ -2308,8 +2361,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-slate-500 uppercase">Valor Recebido (Dinheiro)</label>
                   <div className="relative">
-                    <span className="absolute left-4 top-3.5 text-slate-400 font-bold">R$</span>
-                    <input type="number" step="0.01" value={paymentInputValue} onChange={e => setPaymentInputValue(e.target.value)} className="w-full pl-12 p-4 border rounded-2xl text-xl font-black outline-none focus:ring-4 focus:ring-blue-100" placeholder="0,00" />
+                    <span className="absolute left-4 top-4 text-slate-400 font-bold">R$</span>
+                    <input type="number" step="0.01" value={paymentInputValue} onChange={e => setPaymentInputValue(e.target.value)} className="w-full pl-12 p-4 border border-slate-300 rounded-2xl text-xl font-black outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-slate-800" placeholder="0.00" />
                   </div>
                   
                   {liveChange > 0 && (
@@ -2340,7 +2393,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       if (newPaidTotal >= modalTotal - 0.01) {
                         finalizeOrder(customerName || 'Balcão', 'PAGO', updatedPayments);
                       }
-                    }} className="py-4 border rounded-xl font-bold hover:bg-slate-50 transition-colors">{m}</button>
+                    }} className="py-4 border border-slate-200 rounded-xl font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors">{m}</button>
                   ))}
                 </div>
 
@@ -2362,7 +2415,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       })}
                     </div>
                     <div className="flex gap-3">
-                      <input placeholder="Nome Cliente (Comanda Balcão)" value={customerName} onChange={e => setCustomerName(e.target.value)} className="flex-1 border border-slate-300 p-3 rounded-xl text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all" />
+                      <input placeholder="Nome Cliente (Comanda Balcão)" value={customerName} onChange={e => setCustomerName(e.target.value)} className="flex-1 border border-slate-300 p-3 rounded-xl text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all font-bold text-slate-700" />
                       <button onClick={() => finalizeOrder(customerName, 'ABERTO')} disabled={!customerName} className="bg-orange-500 hover:bg-orange-600 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50 transition-colors shadow-lg shadow-orange-500/20 active:scale-95">Abrir Conta</button>
                     </div>
                   </div>
@@ -2372,89 +2425,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL ENCOMENDA SELECIONADA */}
-        {selectedFutureOrder && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="p-6 bg-slate-900 text-white flex justify-between items-center"><h3 className="font-bold text-xl">{selectedFutureOrder.client}</h3><button onClick={() => setSelectedFutureOrder(null)} className="hover:bg-slate-800 p-2 rounded-full transition-colors"><X size={20} /></button></div>
-              <div className="p-6 bg-slate-50">
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 shadow-sm">
-                  <div className="flex justify-between items-center mb-2"><span className="text-sm font-bold text-slate-500">Valor Total</span><span className="font-bold text-slate-800">R$ {selectedFutureOrder.total.toFixed(2)}</span></div>
-                  <div className="flex justify-between items-center mb-4"><span className="text-sm font-bold text-slate-500">Sinal Pago</span><span className="font-bold text-green-600">R$ {(selectedFutureOrder.signal || 0).toFixed(2)}</span></div>
-                  <div className="pt-4 border-t border-slate-100 flex justify-between items-center"><span className="text-sm font-black uppercase text-slate-800">Restante a Pagar</span><span className="font-black text-red-500 text-2xl">R$ {(selectedFutureOrder.total - (selectedFutureOrder.signal || 0)).toFixed(2)}</span></div>
-                </div>
-                
-                <button onClick={() => handlePrint(selectedFutureOrder, settings, 'customer')} className="w-full mb-6 bg-white border border-slate-300 text-slate-700 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors shadow-sm"><Printer size={18} /> Imprimir Comprovante / PDF</button>
-                
-                {selectedFutureOrder.status !== 'Concluído' ? (
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                    <h4 className="font-bold text-slate-800 text-sm">Recebimento Final</h4>
-                    <input type="number" step="0.01" placeholder="Valor Recebido" className="w-full p-3.5 border border-slate-300 rounded-xl font-bold text-lg outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100 transition-all text-center" value={settleValue} onChange={e => setSettleValue(e.target.value)} />
-                    <div className="grid grid-cols-3 gap-2">{['Pix', 'Dinheiro', 'Cartão'].map(m => (<button key={m} onClick={() => setSettleMethod(m)} className={`py-2.5 rounded-lg text-sm font-bold border transition-colors ${settleMethod === m ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{m}</button>))}</div>
-                    <button onClick={handleSettleOrder} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-green-600/20 mt-2 transition-all active:scale-95">Confirmar e Entregar Pedido</button>
-                  </div>
-                ) : <div className="text-center py-6 text-green-600 font-black bg-green-50 rounded-2xl border border-green-200 text-lg flex items-center justify-center gap-2"><CheckCircle2 size={24}/> Encomenda Finalizada!</div>}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL MOVIMENTAÇÃO */}
-        {showCashMovementModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
-              <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl text-slate-800">Nova Movimentação</h3><button onClick={() => setShowCashMovementModal(false)} className="hover:bg-slate-100 p-2 rounded-full transition-colors"><X size={20} className="text-slate-500" /></button></div>
-              <div className="flex bg-slate-100 p-1.5 rounded-xl mb-6"><button onClick={() => setMovementType('suprimento')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${movementType === 'suprimento' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Suprimento (Entrada)</button><button onClick={() => setMovementType('sangria')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${movementType === 'sangria' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Sangria (Saída)</button></div>
-              <div className="mb-4"><label className="text-xs font-bold text-slate-500 uppercase block mb-2">Valor (R$)</label><input type="number" step="0.01" autoFocus value={movementValue} onChange={e => setMovementValue(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl text-xl font-black text-center outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" placeholder="0.00" /></div>
-              <div className="mb-8"><label className="text-xs font-bold text-slate-500 uppercase block mb-2">Descrição / Motivo</label><input type="text" value={movementDesc} onChange={e => setMovementDesc(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-medium" placeholder="Ex: Troco inicial, pagamento fornecedor..." /></div>
-              <button onClick={handleAddCashMovement} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-xl shadow-indigo-600/20 active:scale-95 text-lg">Confirmar Registro</button>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL NOVA ENCOMENDA */}
-        {showOrderModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95">
-              <div className="p-6 bg-pink-600 text-white flex justify-between items-center"><h3 className="font-bold text-xl flex items-center gap-3"><Cake size={24}/> {editingFutureOrder ? 'Editar Encomenda' : 'Nova Encomenda'}</h3><button onClick={() => setShowOrderModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-colors"><X size={24} /></button></div>
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-5">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome do Cliente</label><input ref={clientRef} value={orderClient} onChange={e => setOrderClient(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, phoneRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold text-slate-800" placeholder="Ex: Maria Silva" autoFocus /></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Telefone</label><input ref={phoneRef} value={orderPhone} onChange={e => setOrderPhone(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, dateRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" placeholder="(00) 00000-0000" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Data de Entrega</label><input ref={dateRef} type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, timeRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" /></div></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Horário</label><input ref={timeRef} type="time" value={orderTime} onChange={e => setOrderTime(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, totalRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" /></div><div><label className="block text-xs font-black text-pink-700 uppercase mb-2">Valor Total (R$)</label><input ref={totalRef} type="number" step="0.01" value={orderTotalValue} onChange={e => setOrderTotalValue(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, obsRef)} className="w-full p-3.5 border-2 border-pink-300 bg-pink-50 rounded-xl outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-200 transition-all font-black text-pink-700 text-lg" placeholder="0.00" /></div></div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex justify-between items-center">
-                    Detalhes da Produção
-                    <button onClick={handleImproveDescription} disabled={isAiLoading} className="text-pink-600 hover:text-pink-800 flex items-center gap-1.5 text-xs font-bold bg-pink-100 px-3 py-1 rounded-full hover:bg-pink-200 disabled:opacity-50 transition-colors">
-                      {isAiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} Melhorar com IA
-                    </button>
-                  </label>
-                  <textarea ref={obsRef} value={orderObs} onChange={e => setOrderObs(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalRef)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all h-32 resize-none text-sm" placeholder="Ex: Bolo massa de chocolate, recheio de brigadeiro com morango, cobertura de chantininho. Tema: Festa Infantil (Homem-Aranha). Escrever Parabéns João..." />
-                </div>
-                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between items-center mb-4"><label className="block text-sm font-black text-slate-700 uppercase">Sinal (Adiantamento)</label><span className="text-sm font-black text-pink-600 bg-pink-50 px-3 py-1 rounded-lg">Falta Receber: {formatMoney((parseFloat(orderTotalValue) || 0) - (parseFloat(orderSignal) || 0))}</span></div><div className="grid grid-cols-2 gap-4"><input ref={signalRef} type="number" step="0.01" value={orderSignal} onChange={e => setOrderSignal(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalMethodRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold" placeholder="Valor Pago R$" /><select ref={signalMethodRef} value={orderSignalMethod} onChange={e => setOrderSignalMethod(e.target.value)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all bg-white font-bold"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão">Cartão</option></select></div></div>
-              </div>
-              <div className="p-5 bg-white border-t border-slate-200 flex justify-end gap-3"><button onClick={() => setShowOrderModal(false)} className="px-6 py-3.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Cancelar</button><button onClick={saveFutureOrder} className="px-10 py-3.5 rounded-xl font-black bg-pink-600 text-white hover:bg-pink-700 shadow-lg shadow-pink-600/30 transition-all active:scale-95 text-lg">Salvar Encomenda</button></div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL EDITAR PRODUTO */}
-        {editingProduct && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="text-xl font-bold text-slate-800">Editar Produto</h3><button onClick={() => setEditingProduct(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button></div>
-              <div className="p-6 space-y-5 bg-white">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800 bg-white">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div></div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"><label className="block text-xs font-bold text-slate-500 uppercase mb-3 text-center">Quantidade em Estoque</label><div className="flex items-center justify-center gap-4"><button onClick={() => setEditingProduct({ ...editingProduct, stock: Math.max(0, editingProduct.stock - 1) })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-red-500 shadow-sm transition-all active:scale-90"><Minus size={20} /></button><input type="number" value={editingProduct.stock} onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })} className="w-24 p-3 border border-slate-300 bg-white rounded-xl focus:border-blue-500 outline-none text-center font-black text-xl" /><button onClick={() => setEditingProduct({ ...editingProduct, stock: editingProduct.stock + 1 })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-green-600 shadow-sm transition-all active:scale-90"><Plus size={20} /></button></div></div>
-                <div className="pt-6 flex gap-3 border-t border-slate-100"><button onClick={handleDeleteProduct} className="p-3.5 bg-red-50 text-red-600 font-bold hover:bg-red-100 rounded-xl transition-colors border border-red-100" title="Excluir Produto"><Trash2 size={20} /></button><button onClick={() => setEditingProduct(null)} className="flex-1 py-3.5 text-slate-600 bg-slate-100 font-bold hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button><button onClick={handleUpdateProduct} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95">Salvar</button></div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* MODAL SUCESSO E IMPRESSÃO DE RECIBO */}
         {finalizedOrder && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in">
             <div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center animate-in zoom-in-95">
               <div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
                 <CheckCircle size={48} className="text-green-600"/>
@@ -2477,7 +2450,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <div className="flex items-center gap-4">
                 <ChefHat size={40} className="text-orange-500"/>
                 <div>
-                  <h2 className="text-4xl font-black uppercase">{kitchenExpandedOrder.client}</h2>
+                  <h2 className="text-4xl font-black uppercase tracking-wider">{kitchenExpandedOrder.client}</h2>
                   <p className="text-slate-400 font-bold text-lg mt-1">Hora do Pedido: {kitchenExpandedOrder.time}</p>
                 </div>
               </div>
@@ -2485,7 +2458,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
             <div className="flex-1 overflow-y-auto p-4 md:p-10 bg-slate-100">
               <div className="max-w-5xl mx-auto space-y-6">
-                {kitchenExpandedOrder.items?.map((item, idx) => (
+                {(kitchenExpandedOrder.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || []).map((item, idx) => (
                   <div key={idx} className="bg-white p-6 rounded-3xl shadow-lg border-l-[12px] border-orange-500">
                     <div className="flex items-start gap-5">
                       <span className="text-5xl font-black text-orange-600 bg-orange-100 px-5 py-3 rounded-2xl min-w-[100px] text-center">{item.qty}x</span>
@@ -2516,7 +2489,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="p-6 bg-white border-t border-slate-200 flex gap-4 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
               <button onClick={() => setKitchenExpandedOrder(null)} className="flex-1 py-8 text-2xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-3xl transition-colors">Voltar</button>
               <button onClick={() => {
-                updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto' });
+                const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
                 showToastMsg(`Pedido #${String(kitchenExpandedOrder.id).slice(0,4)} finalizado na cozinha.`);
                 setKitchenExpandedOrder(null);
               }} className="flex-[2] py-8 text-3xl font-black bg-orange-500 text-white hover:bg-orange-600 rounded-3xl shadow-xl shadow-orange-500/30 transition-all active:scale-95 flex items-center justify-center gap-3">
@@ -2526,7 +2500,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* Modal de Renomear Pessoa (POS) */}
+        {/* Modal de Renomear Pessoa */}
         {renameModal.show && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
@@ -2564,14 +2538,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
 };
 
 // --------------------------------------------------------------------------------
-// COMPONENTE PRINCIPAL (ENTRY POINT)
+// COMPONENTE PRINCIPAL DE ROTEAMENTO (APP)
 // --------------------------------------------------------------------------------
 export default function App() {
   const [user, setUser] = useState(null);
