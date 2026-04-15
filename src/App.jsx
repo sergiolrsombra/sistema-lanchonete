@@ -114,16 +114,16 @@ const getWeekId = (dateStr) => {
 };
 
 const calcItemTotal = (item) => {
-  const subTotal = (item.subItems || []).reduce((acc, sub) => acc + (sub.price * sub.qty), 0);
-  return (item.price + subTotal) * item.qty;
+  const subTotal = (item.subItems || []).reduce((acc, sub) => acc + (Number(sub.price) * Number(sub.qty)), 0);
+  return (Number(item.price) + subTotal) * Number(item.qty);
 };
 
 const getStockDeductions = (cartArray) => {
   const deductions = {};
   cartArray.forEach(item => {
-    deductions[item.id] = (deductions[item.id] || 0) + item.qty;
+    deductions[item.id] = (deductions[item.id] || 0) + Number(item.qty);
     item.subItems?.forEach(sub => {
-      deductions[sub.id] = (deductions[sub.id] || 0) + (sub.qty * item.qty);
+      deductions[sub.id] = (deductions[sub.id] || 0) + (Number(sub.qty) * Number(item.qty));
     });
   });
   return deductions;
@@ -441,7 +441,7 @@ const CashControl = ({ user, orders }) => {
     const groups = {};
     records.forEach(rec => {
       if(!rec.date) return;
-      const m = rec.date.substring(0, 7); 
+      const m = String(rec.date).substring(0, 7); 
       if (!groups[m]) {
         groups[m] = { id: m, total: 0, totalPix: 0, totalCash: 0, totalCard: 0 };
       }
@@ -457,7 +457,7 @@ const CashControl = ({ user, orders }) => {
     const groups = {};
     records.forEach(rec => {
       if(!rec.date) return;
-      const y = rec.date.substring(0, 4); 
+      const y = String(rec.date).substring(0, 4); 
       if (!groups[y]) {
         groups[y] = { id: y, total: 0, totalPix: 0, totalCash: 0, totalCard: 0 };
       }
@@ -518,7 +518,9 @@ const CashControl = ({ user, orders }) => {
           <div className="bg-white p-6 rounded-xl shadow-sm border space-y-6">
             <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex gap-4 items-center">
-                <div className="bg-indigo-100 p-3 rounded-xl text-indigo-600"><ShoppingCart size={24} /></div>
+                <div className="bg-indigo-100 p-3 rounded-xl text-indigo-600">
+                  <ShoppingCart size={24} />
+                </div>
                 <div>
                   <div className="text-sm font-bold text-indigo-900 mb-1">Vendas no Sistema (POS) - {formatDate(date)}</div>
                   <div className="text-xs font-medium text-indigo-700 flex flex-wrap gap-3">
@@ -528,7 +530,7 @@ const CashControl = ({ user, orders }) => {
                   </div>
                 </div>
               </div>
-              <button onClick={importFromPos} className="w-full md:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm active:scale-95">
+              <button onClick={importFromPos} className="w-full md:w-auto bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-sm active:scale-95 whitespace-nowrap">
                 Importar Valores
               </button>
             </div>
@@ -539,7 +541,7 @@ const CashControl = ({ user, orders }) => {
               <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dinheiro</label><input type="number" value={cash} onChange={e => setCash(e.target.value)} className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
               <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cartão</label><input type="number" value={card} onChange={e => setCard(e.target.value)} className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
             </div>
-            <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Salvar Lançamento do Dia</button>
+            <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95">Salvar Lançamento do Dia</button>
             
             {currentEntryWeek && (
               <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
@@ -579,7 +581,7 @@ const CashControl = ({ user, orders }) => {
         {currentView === 'saldo_caixa' && (
           <div className="bg-white rounded-xl shadow-sm border p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-              <h3 className="font-bold mb-5 flex items-center gap-2"><Banknote size={24} className="text-emerald-600"/> Cédulas</h3>
+              <h3 className="font-bold mb-5 flex items-center gap-2 text-slate-800"><Banknote size={24} className="text-emerald-600"/> Cédulas</h3>
               <div className="space-y-4">
                 {[200, 100, 50, 20, 10, 5, 2].map(val => (
                   <div key={val} className="flex items-center justify-between">
@@ -591,7 +593,7 @@ const CashControl = ({ user, orders }) => {
               </div>
             </div>
             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-              <h3 className="font-bold mb-5 flex items-center gap-2"><Coins size={24} className="text-amber-600"/> Moedas e Digital</h3>
+              <h3 className="font-bold mb-5 flex items-center gap-2 text-slate-800"><Coins size={24} className="text-amber-600"/> Moedas e Digital</h3>
               <div className="space-y-4">
                 {[1, 0.50, 0.25, 0.10, 0.05].map(val => (
                   <div key={val} className="flex items-center justify-between">
@@ -640,9 +642,12 @@ const CashControl = ({ user, orders }) => {
 // --------------------------------------------------------------------------------
 const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [view, setView] = useState('login');
+  
+  // Dados do Cliente
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState('Consumo no Local');
+
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -651,6 +656,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderCounter, setOrderCounter] = useState(1000);
   const [toast, setToast] = useState(null);
+
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiResponse, setAiResponse] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -691,9 +697,11 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   
   const addToCart = (p) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
+
     const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
     const addonCategories = ['Adicionais'];
 
+    // --- LÓGICA DE UNIÃO AUTOMÁTICA ---
     if (addonCategories.includes(p.category)) {
       const reversedCart = [...cart].reverse();
       const parentIdxInReversed = reversedCart.findIndex(i => baseCategories.includes(i.category));
@@ -701,10 +709,15 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       if (parentIdxInReversed !== -1) {
         const actualIdx = cart.length - 1 - parentIdxInReversed;
         const parentItem = cart[actualIdx];
+        
         let newSubItems = [...(parentItem.subItems || [])];
-        const existingSub = newSubItems.find(s => s.id === p.id);
-        if (existingSub) newSubItems = newSubItems.map(s => s.id === p.id ? { ...s, qty: s.qty + 1 } : s);
-        else newSubItems.push({ ...p, qty: 1 });
+        const existingSub = newSubItems.find(s => String(s.id) === String(p.id) || (s.firestoreId && s.firestoreId === p.firestoreId));
+        
+        if (existingSub) {
+          newSubItems = newSubItems.map(s => (String(s.id) === String(p.id) || (s.firestoreId && s.firestoreId === p.firestoreId)) ? { ...s, qty: s.qty + 1 } : s);
+        } else {
+          newSubItems.push({ ...p, qty: 1 });
+        }
         
         const newCart = [...cart];
         newCart[actualIdx] = { ...parentItem, subItems: newSubItems };
@@ -714,13 +727,20 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       }
     } else if (baseCategories.includes(p.category)) {
       const orphanAddons = cart.filter(i => (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
+      
       if (orphanAddons.length > 0) {
         let newCart = cart.filter(i => !((i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
+        
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
-           const ex = newSubItems.find(s => s.id === orphan.id);
-           if (ex) ex.qty += orphan.qty; else newSubItems.push({ ...orphan });
+           const ex = newSubItems.find(s => String(s.id) === String(orphan.id) || (s.firestoreId && s.firestoreId === orphan.firestoreId));
+           if (ex) {
+             ex.qty += orphan.qty;
+           } else {
+             newSubItems.push({ ...orphan });
+           }
         });
+        
         newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems });
         setCart(newCart);
         showToastMsg(`Adicionais unidos a ${p.name}!`);
@@ -728,9 +748,13 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       }
     }
 
-    const ex = cart.find(i => i.id === p.id && (!i.subItems || i.subItems.length === 0));
-    if (ex) setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
-    else setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [] }]);
+    // Comportamento Normal
+    const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (!i.subItems || i.subItems.length === 0));
+    if (ex) {
+      setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
+    } else {
+      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [] }]);
+    }
   };
 
   const incrementQty = (cartItemId) => { setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i)); };
@@ -747,9 +771,9 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       let newCart = prevCart.filter(i => i.cartItemId !== sourceCartItemId);
       newCart = newCart.map(item => {
         if (item.cartItemId === targetCartItemId) {
-          const existingSub = (item.subItems || []).find(sub => sub.id === sourceItem.id);
+          const existingSub = (item.subItems || []).find(sub => String(sub.id) === String(sourceItem.id));
           let newSubItems = item.subItems || [];
-          if (existingSub) newSubItems = newSubItems.map(sub => sub.id === sourceItem.id ? { ...sub, qty: sub.qty + sourceItem.qty } : sub);
+          if (existingSub) newSubItems = newSubItems.map(sub => String(sub.id) === String(sourceItem.id) ? { ...sub, qty: sub.qty + sourceItem.qty } : sub);
           else newSubItems = [...newSubItems, { ...sourceItem }];
           return { ...item, subItems: newSubItems };
         }
@@ -762,10 +786,10 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
 
   const unlinkItem = (parentCartItemId, subItemId) => {
     const parent = cart.find(i => i.cartItemId === parentCartItemId);
-    const subItem = parent.subItems.find(s => s.id === subItemId);
+    const subItem = parent.subItems.find(s => String(s.id) === String(subItemId));
     setCart(prevCart => {
       const newCart = prevCart.map(item => {
-        if (item.cartItemId === parentCartItemId) return { ...item, subItems: item.subItems.filter(s => s.id !== subItemId) };
+        if (item.cartItemId === parentCartItemId) return { ...item, subItems: item.subItems.filter(s => String(s.id) !== String(subItemId)) };
         return item;
       });
       newCart.push({ ...subItem, cartItemId: Date.now().toString() + Math.random().toString(), subItems: [] });
@@ -782,13 +806,14 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       const batch = writeBatch(db);
       const deductions = getStockDeductions(cart);
       Object.entries(deductions).forEach(([prodId, totalQty]) => {
-        const pItem = products.find(p => p.id === parseInt(prodId));
+        const pItem = products.find(p => String(p.id) === String(prodId));
         if (pItem && pItem.firestoreId) {
           batch.update(getDocRef('products', pItem.firestoreId), { stock: Math.max(0, pItem.stock - totalQty) });
         }
       });
 
       const cartWithStatus = cart.map(item => ({ ...item, kitchenStatus: 'Pendente' }));
+
       const ordersSnap = await getDocs(query(getCollectionRef('orders')));
       const existingDoc = ordersSnap.docs.find(d => {
         const data = d.data();
@@ -796,6 +821,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       });
 
       let msg = '';
+
       if (existingDoc) {
         const existingData = existingDoc.data();
         await updateDoc(getDocRef('orders', existingDoc.id), {
@@ -807,31 +833,54 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         msg = `*ADICIONANDO AO PEDIDO - ${settings?.storeName}*\n\n`;
       } else {
         const orderData = { 
-          id: orderCounter, client: customerName, phone: customerPhone, orderType: orderType,
-          waiter: 'WhatsApp', items: cartWithStatus, total: getCartTotal(), status: 'ABERTO', paymentStatus: 'ABERTO', 
-          kitchenStatus: 'Pendente', method: 'Aguardando', date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'WhatsApp' 
+          id: orderCounter, 
+          client: customerName,
+          phone: customerPhone,
+          orderType: orderType,
+          waiter: 'WhatsApp', 
+          items: cartWithStatus, 
+          total: getCartTotal(), 
+          status: 'ABERTO', 
+          paymentStatus: 'ABERTO', 
+          kitchenStatus: 'Pendente', 
+          method: 'Aguardando', 
+          date: new Date().toISOString(), 
+          time: new Date().toLocaleTimeString().slice(0, 5), 
+          origin: 'WhatsApp' 
         };
         await addDoc(getCollectionRef('orders'), orderData);
         msg = `*NOVO PEDIDO - ${settings?.storeName}*\n\n`;
       }
+
       await batch.commit();
 
       msg += `👤 *Cliente:* ${customerName}\n`;
       if (customerPhone) msg += `📞 *Contato:* ${customerPhone}\n`;
-      msg += `🛵 *Tipo:* ${orderType}\n\n*ITENS ${existingDoc ? 'ADICIONADOS' : 'DO PEDIDO'}:*\n`;
+      msg += `🛵 *Tipo:* ${orderType}\n\n`;
+      msg += `*ITENS ${existingDoc ? 'ADICIONADOS' : 'DO PEDIDO'}:*\n`;
       cart.forEach(item => {
          msg += `👉 ${item.qty}x ${item.name} - R$ ${calcItemTotal(item).toFixed(2)}\n`;
-         item.subItems?.forEach(sub => { msg += `   + ${sub.qty * item.qty}x ${sub.name}\n`; });
+         item.subItems?.forEach(sub => {
+             msg += `   + ${sub.qty * item.qty}x ${sub.name}\n`;
+         });
          if (item.obs) msg += `   *Obs:* ${item.obs}\n`;
       });
       msg += `\n💰 *VALOR DESTA ADIÇÃO: R$ ${getCartTotal().toFixed(2)}*\n\n`;
       msg += `Aguardo a confirmação do pedido!`;
 
       const storePhoneNumber = settings?.phone?.replace(/\D/g, '') || '';
-      if (storePhoneNumber) window.open(`https://wa.me/55${storePhoneNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+      if (storePhoneNumber) {
+         window.open(`https://wa.me/55${storePhoneNumber}?text=${encodeURIComponent(msg)}`, '_blank');
+      }
 
       setView('success'); 
-      setTimeout(() => { setCart([]); setCustomerName(''); setCustomerPhone(''); setView('login'); setIsSubmitting(false); }, 3000);
+      setTimeout(() => { 
+        setCart([]); 
+        setCustomerName('');
+        setCustomerPhone('');
+        setView('login'); 
+        setIsSubmitting(false); 
+      }, 3000);
     } catch (e) { showToastMsg("Erro ao enviar pedido", "error"); setIsSubmitting(false); }
   };
 
@@ -854,11 +903,18 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   return (
     <div className="min-h-screen bg-slate-100 pb-24 font-sans max-w-md mx-auto shadow-2xl relative border-x border-slate-200 animate-in fade-in">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-20 shadow-md flex justify-between items-center">
         {view === 'login' ? (
-          <div className="flex items-center gap-2"><button onClick={onBack} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button><span className="font-bold">Cardápio Digital</span></div>
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button>
+            <span className="font-bold">Cardápio Digital</span>
+          </div>
         ) : (
-          <div className="flex items-center gap-2"><button onClick={() => setView(view === 'cart' ? 'menu' : 'login')} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button><span className="font-bold truncate max-w-[200px]">{customerName || 'Cardápio'}</span></div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setView(view === 'cart' ? 'menu' : 'login')} className="p-1 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft /></button>
+            <span className="font-bold truncate max-w-[200px]">{customerName || 'Cardápio'}</span>
+          </div>
         )}
         <div className="text-xs bg-slate-800 px-2 py-1 rounded flex items-center gap-1"><Store size={12} /> {settings?.storeName || 'Loja'}</div>
       </div>
@@ -866,19 +922,31 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       {view === 'login' && (
         <div className="p-6 animate-in fade-in">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <h2 className="font-black text-2xl text-slate-800 mb-2">Olá! 👋</h2><p className="text-slate-500 mb-6 text-sm">Preencha seus dados para acessar o nosso cardápio e fazer seu pedido.</p>
+            <h2 className="font-black text-2xl text-slate-800 mb-2">Olá! 👋</h2>
+            <p className="text-slate-500 mb-6 text-sm">Preencha seus dados para acessar o nosso cardápio e fazer seu pedido.</p>
+            
             <form onSubmit={handleLoginSubmit} className="space-y-4">
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Seu Nome</label><input required value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-slate-800" placeholder="Ex: Maria Silva" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">WhatsApp</label><input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-slate-800" placeholder="(00) 00000-0000" /></div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Seu Nome</label>
+                <input required value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-bold text-slate-800" placeholder="Ex: Maria Silva" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">WhatsApp</label>
+                <input type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all text-slate-800" placeholder="(00) 00000-0000" />
+              </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">O pedido é para:</label>
                 <div className="grid grid-cols-3 gap-2">
                   {['Consumo no Local', 'Retirada', 'Entrega'].map(t => (
-                    <button type="button" key={t} onClick={() => setOrderType(t)} className={`py-3 px-2 text-xs font-bold rounded-xl border transition-colors ${orderType === t ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>{t}</button>
+                    <button type="button" key={t} onClick={() => setOrderType(t)} className={`py-3 px-2 text-xs font-bold rounded-xl border transition-colors ${orderType === t ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                      {t}
+                    </button>
                   ))}
                 </div>
               </div>
-              <div className="pt-4"><button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 text-lg">Ver Cardápio</button></div>
+              <div className="pt-4">
+                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 text-lg">Ver Cardápio</button>
+              </div>
             </form>
           </div>
         </div>
@@ -887,17 +955,32 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       {view === 'menu' && (
         <div className="animate-in fade-in">
           <div className="bg-white p-4 sticky top-[60px] z-10 border-b shadow-sm">
-            <div className="flex gap-2 mb-3"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18} /><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" /></div><button onClick={handleAiSuggestion} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-2 rounded-lg shadow-md animate-pulse hover:opacity-90 active:scale-95"><Sparkles size={20}/></button></div>
-            <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">{categories.map(c => <button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === c ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{c}</button>)}</div>
+            <div className="flex gap-2 mb-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button onClick={handleAiSuggestion} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-2 rounded-lg shadow-md animate-pulse hover:opacity-90 active:scale-95"><Sparkles size={20}/></button>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+              {categories.map(c => (
+                <button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === c ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{c}</button>
+              ))}
+            </div>
           </div>
+
           <div className="p-4 grid grid-cols-2 gap-3">
             {filtered.map(p => {
               const qty = cart.filter(i => i.id === p.id).reduce((sum, i) => sum + i.qty, 0);
               return (
                 <div key={p.id} className={`bg-white p-3 rounded-2xl shadow-sm border flex flex-col items-center text-center gap-2 transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'}`}>
                   <div className="bg-slate-100 p-4 rounded-full mb-1"><IconMapper type={p.icon} className="w-8 h-8 text-slate-700" /></div>
-                  <div className="flex-1 w-full"><div className="font-bold text-sm leading-tight mb-1 truncate px-1 text-slate-800">{p.name}</div><div className="text-sm font-bold text-blue-600">{formatMoney(p.price)}</div></div>
-                  {p.stock > 0 ? <div className="w-full mt-1"><button onClick={() => addToCart(p)} className="w-full py-2 bg-slate-900 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-slate-800 active:scale-95 transition-transform">{qty > 0 ? `Adicionado (${qty})` : 'Adicionar'}</button></div> : <span className="text-xs font-bold text-red-400 mt-2 block w-full py-2 bg-red-50 rounded-lg">Esgotado</span>}
+                  <div className="flex-1 w-full"><div className="font-bold text-sm leading-tight mb-1 truncate px-1 text-slate-800">{p.name}</div><div className="text-sm font-bold text-blue-600">R$ {p.price.toFixed(2)}</div></div>
+                  {p.stock > 0 ? (
+                    <div className="w-full mt-1">
+                      <button onClick={() => addToCart(p)} className="w-full py-2 bg-slate-900 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-slate-800 active:scale-95 transition-transform">{qty > 0 ? `Adicionado (${qty})` : 'Adicionar'}</button>
+                    </div>
+                  ) : (<span className="text-xs font-bold text-red-400 mt-2 block w-full py-2 bg-red-50 rounded-lg">Esgotado</span>)}
                 </div>
               )
             })}
@@ -908,17 +991,27 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       {view === 'cart' && (
         <div className="p-4 animate-in slide-in-from-right-4">
           <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-slate-800"><ShoppingCart /> Seu Pedido</h2>
+          
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden mb-4">
             {cart.map(item => (
               <div key={item.cartItemId} className="p-4 border-b border-slate-100 last:border-0">
                 <div className="flex justify-between items-start mb-2">
-                  <div><div className="font-bold text-slate-800"><span className="text-blue-600 mr-1">{item.qty}x</span> {item.name}</div><div className="text-sm text-slate-500 font-medium">{formatMoney(calcItemTotal(item))}</div></div>
-                  <div className="flex gap-2"><button onClick={() => removeFromCart(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-red-50 text-red-500 rounded hover:bg-red-100 active:scale-95 transition-all">-</button><button onClick={() => incrementQty(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-green-50 text-green-600 rounded hover:bg-green-100 active:scale-95 transition-all">+</button></div>
+                  <div><div className="font-bold text-slate-800"><span className="text-blue-600 mr-1">{item.qty}x</span> {item.name}</div><div className="text-sm text-slate-500 font-medium">R$ {calcItemTotal(item).toFixed(2)}</div></div>
+                  <div className="flex gap-2">
+                    <button onClick={() => removeFromCart(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-red-50 text-red-500 rounded hover:bg-red-100 active:scale-95 transition-all">-</button>
+                    <button onClick={() => incrementQty(item.cartItemId)} className="w-7 h-7 flex items-center justify-center bg-green-50 text-green-600 rounded hover:bg-green-100 active:scale-95 transition-all">+</button>
+                  </div>
                 </div>
                 {item.subItems && item.subItems.length > 0 && (
                   <div className="pl-3 mt-3 mb-3 border-l-2 border-indigo-200 space-y-2">
                     {item.subItems.map(sub => (
-                      <div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100"><span className="font-bold text-slate-600 text-xs">+ {sub.qty * item.qty}x {sub.name}</span><div className="flex items-center gap-3"><span className="text-slate-500 text-xs font-medium">{formatMoney(sub.price * sub.qty * item.qty)}</span><button onClick={() => unlinkItem(item.cartItemId, sub.id)} className="text-red-400 hover:text-red-600 p-1" title="Remover e deixar avulso"><Trash2 size={14}/></button></div></div>
+                      <div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100">
+                        <span className="font-bold text-slate-600 text-xs">+ {sub.qty * item.qty}x {sub.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500 text-xs font-medium">R$ {(sub.price * sub.qty * item.qty).toFixed(2)}</span>
+                          <button onClick={() => unlinkItem(item.cartItemId, sub.id)} className="text-red-400 hover:text-red-600 p-1" title="Remover e deixar avulso"><Trash2 size={14}/></button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -928,14 +1021,25 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
             {cart.length === 0 && <div className="p-6 text-center text-slate-500 text-sm font-medium">Carrinho vazio</div>}
           </div>
           {cart.length > 0 && (
-            <><div className="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between font-bold text-lg text-slate-800"><span>Total a Pagar</span><span className="text-blue-600">{formatMoney(total)}</span></div><button onClick={sendOrder} disabled={isSubmitting} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all active:scale-95 disabled:opacity-70">{isSubmitting ? 'Gerando...' : <><MessageCircle size={20} /> Enviar pelo WhatsApp</>}</button></>
+            <>
+              <div className="bg-white p-4 rounded-xl shadow-sm mb-6 flex justify-between font-bold text-lg text-slate-800"><span>Total a Pagar</span><span className="text-blue-600">R$ {total.toFixed(2)}</span></div>
+              <button onClick={sendOrder} disabled={isSubmitting} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 transition-all active:scale-95 disabled:opacity-70">
+                {isSubmitting ? 'Gerando...' : <><MessageCircle size={20} /> Enviar pelo WhatsApp</>}
+              </button>
+            </>
           )}
         </div>
       )}
       
       {view === 'menu' && count > 0 && (
         <div className="fixed bottom-4 left-4 right-4 z-30 max-w-md mx-auto animate-in slide-in-from-bottom-5">
-          <button onClick={() => setView('cart')} className="w-full bg-slate-900 text-white p-4 rounded-2xl shadow-xl flex justify-between items-center hover:bg-slate-800 transition-colors active:scale-95"><div className="flex items-center gap-3"><div className="bg-white text-slate-900 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">{count}</div><span className="font-bold">Ver Carrinho</span></div><span className="font-bold text-lg">{formatMoney(total)}</span></button>
+          <button onClick={() => setView('cart')} className="w-full bg-slate-900 text-white p-4 rounded-2xl shadow-xl flex justify-between items-center hover:bg-slate-800 transition-colors active:scale-95">
+            <div className="flex items-center gap-3">
+              <div className="bg-white text-slate-900 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">{count}</div>
+              <span className="font-bold">Ver Carrinho</span>
+            </div>
+            <span className="font-bold text-lg">R$ {total.toFixed(2)}</span>
+          </button>
         </div>
       )}
       
@@ -943,12 +1047,21 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       {showAiModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border-2 border-purple-100 animate-in zoom-in-95">
-            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 text-white flex justify-between items-center"><h3 className="font-bold text-lg flex items-center gap-2"><Sparkles size={20} className="animate-spin-slow"/> Sugestão do Chef</h3><button onClick={() => setShowAiModal(false)} className="hover:bg-white/20 p-1 rounded-full transition-colors"><X size={20}/></button></div>
+            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 text-white flex justify-between items-center">
+              <h3 className="font-bold text-lg flex items-center gap-2"><Sparkles size={20} className="animate-spin-slow"/> Sugestão do Chef</h3>
+              <button onClick={() => setShowAiModal(false)} className="hover:bg-white/20 p-1 rounded-full transition-colors"><X size={20}/></button>
+            </div>
             <div className="p-6 text-center">
               {isAiLoading ? (
-                <div className="py-8 flex flex-col items-center"><Loader2 size={40} className="animate-spin text-purple-600 mb-4"/><p className="text-slate-500 font-medium">Consultando o chef...</p></div>
+                <div className="py-8 flex flex-col items-center">
+                  <Loader2 size={40} className="animate-spin text-purple-600 mb-4"/>
+                  <p className="text-slate-500 font-medium">Consultando o chef...</p>
+                </div>
               ) : (
-                <div className="py-4"><div className="text-lg font-medium text-slate-800 leading-relaxed mb-6">{aiResponse}</div><button onClick={() => setShowAiModal(false)} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold w-full hover:bg-slate-800 transition-colors shadow-lg">Entendido!</button></div>
+                <div className="py-4">
+                  <div className="text-lg font-medium text-slate-800 leading-relaxed mb-6">{aiResponse}</div>
+                  <button onClick={() => setShowAiModal(false)} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold w-full hover:bg-slate-800 transition-colors shadow-lg">Entendido!</button>
+                </div>
               )}
             </div>
           </div>
@@ -987,6 +1100,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [partialPayments, setPartialPayments] = useState([]);
   const [paymentInputValue, setPaymentInputValue] = useState('');
   
+  // Estados para Venda Finalizada
   const [finalizedOrder, setFinalizedOrder] = useState(null);
 
   const [editingProduct, setEditingProduct] = useState(null);
@@ -1027,11 +1141,17 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [showDeleteAuthModal, setShowDeleteAuthModal] = useState(false);
   const [deletePasswordInput, setDeletePasswordInput] = useState('');
 
-  const [configForm, setConfigForm] = useState({ ...initialSettings, docType: initialSettings?.docType || 'CNPJ', docId: initialSettings?.docId || initialSettings?.cnpj || '' });
+  const [configForm, setConfigForm] = useState({
+    ...initialSettings,
+    docType: initialSettings?.docType || 'CNPJ',
+    docId: initialSettings?.docId || initialSettings?.cnpj || ''
+  });
+
   const [reportDate, setReportDate] = useState(new Date());
   const [reportMode, setReportMode] = useState('daily');
   const [kitchenExpandedOrder, setKitchenExpandedOrder] = useState(null);
   
+  // History Feature States
   const [historyDate, setHistoryDate] = useState(getTodayStr());
   const [historySearch, setHistorySearch] = useState('');
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
@@ -1045,56 +1165,130 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const signalRef = useRef(null);
   const signalMethodRef = useRef(null);
 
-  const handleOrderKeyDown = (e, nextRef) => { if (e.key === 'Enter') { e.preventDefault(); nextRef?.current?.focus(); } };
+  const handleOrderKeyDown = (e, nextRef) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nextRef?.current?.focus();
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
     const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => { 
-      if (snap.empty) { const batch = writeBatch(db); DEFAULT_PRODUCTS_SEED.forEach(p => { batch.set(doc(getCollectionRef('products'), p.id.toString()), p); }); batch.commit(); } 
-      else { const list = snap.docs.map(d=>({firestoreId: d.id, ...d.data()})).sort((a,b)=>a.name.localeCompare(b.name)); setProducts(list); const fetchedCategories = [...new Set(list.map(p=>p.category).filter(Boolean))]; fetchedCategories.sort((a, b) => { const indexA = CATEGORIES.indexOf(a); const indexB = CATEGORIES.indexOf(b); return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999); }); setCategories(['Todos', ...fetchedCategories]); } 
+      if (snap.empty) { 
+        const batch = writeBatch(db);
+        DEFAULT_PRODUCTS_SEED.forEach(p => { batch.set(doc(getCollectionRef('products'), p.id.toString()), p); });
+        batch.commit();
+      } else {
+        const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); 
+        setProducts(list); 
+        
+        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
+        fetchedCategories.sort((a, b) => {
+          const indexA = CATEGORIES.indexOf(a);
+          const indexB = CATEGORIES.indexOf(b);
+          return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
+        });
+        setCategories(['Todos', ...fetchedCategories]);
+      } 
     });
-    const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => { const list = snap.docs.map(d=>({firestoreId: d.id, ...d.data()})).sort((a,b)=>b.id-a.id); setOrders(list); if (list.length > 0) { setOrderCounter(Math.max(0, ...list.map(o=>Number(o.id)||0))+1); } });
-    const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc=>({id: doc.id, ...doc.data()})).sort((a,b)=>(b.date||'').localeCompare(a.date||''))); });
-    const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { setFutureOrders(snap.docs.map(d=>({firestoreId: d.id, ...d.data()})).sort((a,b)=>new Date(a.deliveryDate+'T'+a.deliveryTime)-new Date(b.deliveryDate+'T'+b.deliveryTime))); });
+    const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
+      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id); setOrders(list); 
+      if (list.length > 0) {
+        const maxId = Math.max(0, ...list.map(o => Number(o.id) || 0));
+        setOrderCounter(maxId + 1);
+      }
+    });
+    const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))); });
+    const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
     return () => { unsubProd(); unsubOrders(); unsubMove(); unsubFuture(); };
   }, [user]);
 
-  useEffect(() => { setSettings(initialSettings); setConfigForm({ ...initialSettings, docType: initialSettings?.docType || 'CNPJ', docId: initialSettings?.docId || initialSettings?.cnpj || '' }); }, [initialSettings]);
+  useEffect(() => {
+    setSettings(initialSettings);
+    setConfigForm({
+      ...initialSettings,
+      docType: initialSettings?.docType || 'CNPJ',
+      docId: initialSettings?.docId || initialSettings?.cnpj || ''
+    });
+  }, [initialSettings]);
 
   const showToastMsg = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
 
   const addToCart = (p) => { 
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; } 
+    
     const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
     const addonCategories = ['Adicionais'];
 
+    // --- LÓGICA DE UNIÃO AUTOMÁTICA NO POS ---
     if (addonCategories.includes(p.category)) {
       const reversedCart = [...cart].reverse();
       const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
+      
       if (parentIdxInReversed !== -1) {
         const actualIdx = cart.length - 1 - parentIdxInReversed;
         const parentItem = cart[actualIdx];
+        
         let newSubItems = [...(parentItem.subItems || [])];
         const existingSub = newSubItems.find(s => s.id === p.id);
-        if (existingSub) { newSubItems = newSubItems.map(s => s.id === p.id ? { ...s, qty: s.qty + 1 } : s); } else { newSubItems.push({ ...p, qty: 1 }); }
-        const newCart = [...cart]; newCart[actualIdx] = { ...parentItem, subItems: newSubItems }; setCart(newCart); showToastMsg(`${p.name} unido a ${parentItem.name}!`); return;
+        
+        if (existingSub) {
+          newSubItems = newSubItems.map(s => s.id === p.id ? { ...s, qty: s.qty + 1 } : s);
+        } else {
+          newSubItems.push({ ...p, qty: 1 });
+        }
+        
+        const newCart = [...cart];
+        newCart[actualIdx] = { ...parentItem, subItems: newSubItems };
+        setCart(newCart);
+        showToastMsg(`${p.name} unido a ${parentItem.name}!`);
+        return;
       }
     } else if (baseCategories.includes(p.category)) {
       const orphanAddons = cart.filter(i => i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0));
+      
       if (orphanAddons.length > 0) {
         let newCart = cart.filter(i => !(i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)));
+        
         let newSubItems = [];
-        orphanAddons.forEach(orphan => { const ex = newSubItems.find(s => s.id === orphan.id); if (ex) { ex.qty += orphan.qty; } else { newSubItems.push({ ...orphan }); } });
-        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems, guest: currentGuest }); setCart(newCart); showToastMsg(`Adicionais unidos a ${p.name}!`); return;
+        orphanAddons.forEach(orphan => {
+           const ex = newSubItems.find(s => s.id === orphan.id);
+           if (ex) {
+             ex.qty += orphan.qty;
+           } else {
+             newSubItems.push({ ...orphan });
+           }
+        });
+        
+        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems, guest: currentGuest });
+        setCart(newCart);
+        showToastMsg(`Adicionais unidos a ${p.name}!`);
+        return;
       }
     }
 
+    // Comportamento Normal
     const ex = cart.find(i => i.id === p.id && i.guest === currentGuest && (!i.subItems || i.subItems.length === 0));
-    if (ex) { setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i)); } else { setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuest }]); }
+    if (ex) {
+      setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
+    } else {
+      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuest }]);
+    }
   };
 
-  const incrementQty = (cartItemId) => { setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i)); };
-  const removeFromCart = (cartItemId) => { const ex = cart.find(i => i.cartItemId === cartItemId); if (ex.qty > 1) { setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty - 1 } : i)); } else { setCart(cart.filter(item => item.cartItemId !== cartItemId)); } };
+  const incrementQty = (cartItemId) => {
+    setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i));
+  };
+  
+  const removeFromCart = (cartItemId) => {
+    const ex = cart.find(i => i.cartItemId === cartItemId);
+    if (ex.qty > 1) {
+      setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty - 1 } : i));
+    } else {
+      setCart(cart.filter(item => item.cartItemId !== cartItemId));
+    }
+  };
 
   const linkItem = (sourceCartItemId, targetCartItemId) => {
     const sourceItem = cart.find(i => i.cartItemId === sourceCartItemId);
@@ -1105,7 +1299,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
         if (item.cartItemId === targetCartItemId) {
           const existingSub = (item.subItems || []).find(sub => sub.id === sourceItem.id);
           let newSubItems = item.subItems || [];
-          if (existingSub) { newSubItems = newSubItems.map(sub => sub.id === sourceItem.id ? { ...sub, qty: sub.qty + sourceItem.qty } : sub); } else { newSubItems = [...newSubItems, { ...sourceItem }]; }
+          if (existingSub) {
+            newSubItems = newSubItems.map(sub => sub.id === sourceItem.id ? { ...sub, qty: sub.qty + sourceItem.qty } : sub);
+          } else {
+            newSubItems = [...newSubItems, { ...sourceItem }];
+          }
           return { ...item, subItems: newSubItems };
         }
         return item;
@@ -1119,8 +1317,14 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const subItem = parent.subItems.find(s => s.id === subItemId);
     if (!subItem) return;
     setCart(prevCart => {
-      const newCart = prevCart.map(item => { if (item.cartItemId === parentCartItemId) { return { ...item, subItems: (item.subItems || []).filter(s => s.id !== subItemId) }; } return item; });
-      newCart.push({ ...subItem, cartItemId: Date.now().toString() + Math.random().toString(), subItems: [] }); return newCart;
+      const newCart = prevCart.map(item => {
+        if (item.cartItemId === parentCartItemId) {
+          return { ...item, subItems: (item.subItems || []).filter(s => s.id !== subItemId) };
+        }
+        return item;
+      });
+      newCart.push({ ...subItem, cartItemId: Date.now().toString() + Math.random().toString(), subItems: [] });
+      return newCart;
     });
   };
 
@@ -1130,14 +1334,27 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const finalizeOrder = async (client = 'Balcão', status = 'PAGO', overridePayments = null) => {
     if (!user) return;
     const paymentsToProcess = overridePayments || partialPayments;
+    
+    // Lógica para divisão de conta (Partial Payment via Guest)
     const isPartialPayment = payingGuest !== 'Mesa Completa';
-    const cws = cart.map(i => ({ ...i, kitchenStatus: 'Pendente' }));
-    const sItems = selectedTabToSettle?.items || [];
-    const itemsToPay = selectedTabToSettle ? (isPartialPayment ? sItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : sItems) : (isPartialPayment ? cws.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cws);
-    const itemsToKeep = selectedTabToSettle ? (isPartialPayment ? sItems.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []) : (isPartialPayment ? cws.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
-    const tot = itemsToPay.reduce((a, i) => a + calcItemTotal(i), 0);
+    
+    const cartWithStatus = cart.map(i => ({ ...i, kitchenStatus: 'Pendente' }));
 
-    if (status === 'PAGO') { const paidTotal = paymentsToProcess.reduce((acc, p) => acc + p.value, 0); if (paidTotal < tot - 0.01) { showToastMsg("Pagamento insuficiente.", "error"); return; } }
+    const safeTabItems = selectedTabToSettle?.items || [];
+    const itemsToPay = selectedTabToSettle 
+        ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : safeTabItems) 
+        : (isPartialPayment ? cartWithStatus.filter(i => (i.guest || 'Pessoa 1') === payingGuest) : cartWithStatus);
+    
+    const itemsToKeep = selectedTabToSettle 
+        ? (isPartialPayment ? safeTabItems.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : [])
+        : (isPartialPayment ? cartWithStatus.filter(i => (i.guest || 'Pessoa 1') !== payingGuest) : []);
+
+    const totalOrder = itemsToPay.reduce((acc, item) => acc + calcItemTotal(item), 0);
+
+    if (status === 'PAGO') {
+      const paidTotal = paymentsToProcess.reduce((acc, p) => acc + p.value, 0);
+      if (paidTotal < totalOrder - 0.01) { showToastMsg("Pagamento insuficiente.", "error"); return; }
+    }
 
     const nowISO = new Date().toISOString();
 
@@ -1145,97 +1362,296 @@ const PosView = ({ user, onBack, initialSettings }) => {
       const batch = writeBatch(db);
       const deductions = getStockDeductions(itemsToDeduct);
       let hasUpdates = false;
-      Object.entries(deductions).forEach(([pid, qty]) => { const prod = products.find(p => p.id === parseInt(pid)); if (prod?.firestoreId) { batch.update(getDocRef('products', prod.firestoreId), { stock: Math.max(0, prod.stock - qty) }); hasUpdates = true; } });
+      Object.entries(deductions).forEach(([pid, qty]) => {
+        const prod = products.find(p => p.id === parseInt(pid));
+        if (prod?.firestoreId) {
+          batch.update(getDocRef('products', prod.firestoreId), { stock: Math.max(0, prod.stock - qty) });
+          hasUpdates = true;
+        }
+      });
       if (hasUpdates) await batch.commit();
     };
 
     try {
       if (status === 'ABERTO') {
         const existing = orders.find(o => o.client?.toLowerCase().trim() === client?.toLowerCase().trim() && o.paymentStatus === 'ABERTO');
-        if (existing) { await updateDoc(getDocRef('orders', existing.firestoreId), { items: [...(existing.items || []), ...cws], total: (existing.total || 0) + getCartTotal(), kitchenStatus: 'Pendente', updatedAt: nowISO }); showToastMsg(`Itens adicionados à comanda de ${client}!`); } 
-        else { await addDoc(getCollectionRef('orders'), { id: orderCounter, items: cws, total: getCartTotal(), status: 'ABERTO', paymentStatus: 'ABERTO', method: 'Aguardando', client, kitchenStatus: 'Pendente', date: nowISO, paidAt: null, time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Caixa' }); showToastMsg(`Comanda aberta para ${client}!`); }
-        await deductStock(cart); setCart([]); setGuestList(['Pessoa 1']); setCurrentGuest('Pessoa 1'); setShowPaymentModal(false); setCustomerName(''); return; 
+        if (existing) {
+          await updateDoc(getDocRef('orders', existing.firestoreId), { 
+            items: [...(existing.items || []), ...cartWithStatus], 
+            total: (existing.total || 0) + getCartTotal(), 
+            kitchenStatus: 'Pendente', 
+            updatedAt: nowISO 
+          });
+          showToastMsg(`Itens adicionados à comanda de ${client}!`);
+        } else {
+          await addDoc(getCollectionRef('orders'), { 
+            id: orderCounter, 
+            items: cartWithStatus, 
+            total: getCartTotal(), 
+            status: 'ABERTO', 
+            paymentStatus: 'ABERTO', 
+            method: 'Aguardando', 
+            client, 
+            kitchenStatus: 'Pendente', 
+            date: nowISO, 
+            paidAt: null, 
+            time: new Date().toLocaleTimeString().slice(0, 5), 
+            origin: 'Caixa' 
+          });
+          showToastMsg(`Comanda aberta para ${client}!`);
+        }
+        await deductStock(cart);
+        setCart([]);
+        setGuestList(['Pessoa 1']);
+        setCurrentGuest('Pessoa 1');
+        setShowPaymentModal(false);
+        setCustomerName('');
+        return; 
       }
 
       const methodString = paymentsToProcess.length > 0 ? paymentsToProcess.map(p => p.method).join(' + ') : 'Dinheiro';
-      const cPay = paymentsToProcess.find(p => p.method === 'Dinheiro');
-      const rec = cPay && cPay.receivedValue !== undefined ? cPay.receivedValue : tot;
-      const chg = Math.max(0, rec - tot);
-      const oData = { id: selectedTabToSettle ? selectedTabToSettle.id : orderCounter, items: itemsToPay, total: tot, status: 'Pago', paymentStatus: 'PAGO', method: methodString, client: selectedTabToSettle ? (isPartialPayment ? `${selectedTabToSettle.client} (${payingGuest})` : selectedTabToSettle.client) : (client || (isPartialPayment ? `Balcão (${payingGuest})` : 'Balcão')), date: selectedTabToSettle?.date || nowISO, receivedValue: cPay ? rec : null, changeValue: chg > 0 ? chg : null };
+      
+      const cashPay = paymentsToProcess.find(p => p.method === 'Dinheiro');
+      let received = cashPay && cashPay.receivedValue !== undefined ? cashPay.receivedValue : totalOrder;
+      const change = Math.max(0, received - totalOrder);
+
+      const orderData = { 
+        id: selectedTabToSettle ? selectedTabToSettle.id : orderCounter, 
+        items: itemsToPay, 
+        total: totalOrder, 
+        status: 'Pago', 
+        paymentStatus: 'PAGO', 
+        method: methodString, 
+        client: selectedTabToSettle ? (isPartialPayment ? `${selectedTabToSettle.client} (${payingGuest})` : selectedTabToSettle.client) : (client || (isPartialPayment ? `Balcão (${payingGuest})` : 'Balcão')), 
+        date: selectedTabToSettle?.date || nowISO, 
+        receivedValue: cashPay ? received : null,
+        changeValue: change > 0 ? change : null
+      };
 
       if (selectedTabToSettle) {
         if (isPartialPayment && itemsToKeep.length > 0) {
-          await addDoc(getCollectionRef('orders'), { ...oData, origin: 'Caixa (Parcial)', kitchenStatus: 'Pronto', time: new Date().toLocaleTimeString().slice(0, 5), payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: tot }], paidAt: nowISO });
-          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { items: itemsToKeep, total: itemsToKeep.reduce((a, i) => a + calcItemTotal(i), 0), updatedAt: nowISO });
-        } else { await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { paymentStatus: 'PAGO', status: 'Pago', method: methodString, payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: tot }], paidAt: nowISO, receivedValue: oData.receivedValue, changeValue: oData.changeValue }); }
+          // Pagamento de apenas 1 Pessoa: cria recibo dela e mantém a mesa aberta
+          await addDoc(getCollectionRef('orders'), { 
+            ...orderData, 
+            origin: 'Caixa (Parcial)', 
+            kitchenStatus: 'Pronto', 
+            time: new Date().toLocaleTimeString().slice(0, 5),
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
+            paidAt: nowISO
+          });
+          
+          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
+            items: itemsToKeep,
+            total: itemsToKeep.reduce((acc, item) => acc + calcItemTotal(item), 0),
+            updatedAt: nowISO 
+          });
+        } else {
+          // Pagamento total da mesa
+          await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
+            paymentStatus: 'PAGO', 
+            status: 'Pago',
+            method: methodString, 
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }], 
+            paidAt: nowISO,
+            receivedValue: orderData.receivedValue,
+            changeValue: orderData.changeValue
+          });
+        }
       } else {
-        await addDoc(getCollectionRef('orders'), { ...oData, origin: isPartialPayment?'Caixa (Parcial)':'Caixa', kitchenStatus: 'Pendente', time: new Date().toLocaleTimeString().slice(0, 5), payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: tot }], paidAt: nowISO });
+        // Pagamento Direto no POS (Novo Pedido)
         if (isPartialPayment && itemsToKeep.length > 0) {
-          setFinalizedOrder(oData); setCart(itemsToKeep); const remG = [...new Set(itemsToKeep.map(i => i.guest || 'Pessoa 1'))]; setGuestList(remG.length > 0 ? remG : ['Pessoa 1']); setCurrentGuest(remG.length > 0 ? remG[0] : 'Pessoa 1'); setPartialPayments([]); setPayingGuest('Mesa Completa'); setShowPaymentModal(false); showToastMsg(`Venda parcial! O restante continua no carrinho.`); return;
+          await addDoc(getCollectionRef('orders'), { 
+            ...orderData, 
+            origin: 'Caixa (Parcial)', 
+            kitchenStatus: 'Pendente', 
+            time: new Date().toLocaleTimeString().slice(0, 5),
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
+            paidAt: nowISO
+          });
+          await deductStock(itemsToPay);
+          
+          setFinalizedOrder(orderData);
+          setCart(itemsToKeep); // Mantém os restantes no carrinho do POS
+          const remainingGuests = [...new Set(itemsToKeep.map(i => i.guest || 'Pessoa 1'))];
+          setGuestList(remainingGuests.length > 0 ? remainingGuests : ['Pessoa 1']);
+          setCurrentGuest(remainingGuests.length > 0 ? remainingGuests[0] : 'Pessoa 1');
+          setPartialPayments([]);
+          setPayingGuest('Mesa Completa');
+          setShowPaymentModal(false);
+          showToastMsg(`Venda finalizada para ${payingGuest}! O restante continua no carrinho.`);
+          return; // Previne o limpa-carrinho global abaixo
+        } else {
+          await addDoc(getCollectionRef('orders'), { 
+            ...orderData, 
+            origin: 'Caixa', 
+            kitchenStatus: 'Pendente', 
+            time: new Date().toLocaleTimeString().slice(0, 5),
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
+            paidAt: nowISO
+          });
+          await deductStock(itemsToPay);
         }
       }
-      setFinalizedOrder(oData); setCart([]); setGuestList(['Pessoa 1']); setCurrentGuest('Pessoa 1'); setPartialPayments([]); setSelectedTabToSettle(null); setCustomerName(''); setPayingGuest('Mesa Completa'); setShowPaymentModal(false); showToastMsg("Venda finalizada!");
-    } catch (e) { console.error(e); showToastMsg(`Erro ao salvar venda: ${e.message}`, "error"); }
+      
+      setFinalizedOrder(orderData);
+      setCart([]);
+      setGuestList(['Pessoa 1']);
+      setCurrentGuest('Pessoa 1');
+      setPartialPayments([]);
+      setSelectedTabToSettle(null);
+      setCustomerName('');
+      setPayingGuest('Mesa Completa');
+      setShowPaymentModal(false);
+      showToastMsg("Venda finalizada!");
+    } catch (e) { 
+      console.error(e); 
+      showToastMsg(`Erro ao salvar venda: ${e.message}`, "error"); 
+    }
   };
 
   const confirmActionAuth = () => {
     const currentPass = settings.posPassword || '1234';
-    if (actionPassword === currentPass) { performAction(); } else { showToastMsg('Senha incorreta!', 'error'); setActionPassword(''); }
+    if (actionPassword === currentPass) {
+      performAction();
+    } else {
+      showToastMsg('Senha incorreta!', 'error');
+      setActionPassword('');
+    }
   };
 
   const performAction = async () => {
-    const { action, order } = actionAuthModal; if (!order) return;
+    const { action, order } = actionAuthModal;
+    if (!order) return;
+
     try {
       const batch = writeBatch(db);
       const restores = getStockDeductions(order.items);
-      Object.entries(restores).forEach(([prodId, totalQty]) => { const pItem = products.find(p => p.id === parseInt(prodId)); if (pItem && pItem.firestoreId) { batch.update(getDocRef('products', pItem.firestoreId), { stock: pItem.stock + totalQty }); } });
+      Object.entries(restores).forEach(([prodId, totalQty]) => {
+        const pItem = products.find(p => p.id === parseInt(prodId));
+        if (pItem && pItem.firestoreId) {
+          batch.update(getDocRef('products', pItem.firestoreId), { stock: pItem.stock + totalQty });
+        }
+      });
       const orderRef = getDocRef('orders', order.firestoreId);
       batch.delete(orderRef);
       await batch.commit();
 
-      if (action === 'cancel') { showToastMsg("Pedido cancelado e estoque restaurado!"); } else if (action === 'edit') {
+      if (action === 'cancel') {
+        showToastMsg("Pedido cancelado e estoque restaurado!");
+      } else if (action === 'edit') {
         setCart(order.items.map(i => ({ ...i, cartItemId: Date.now().toString() + Math.random().toString() })));
+        
+        // Reconstrói a lista de convidados se houver
         const uniqueGuests = [...new Set(order.items.map(i => i.guest || 'Pessoa 1'))];
-        setGuestList(uniqueGuests.length > 0 ? uniqueGuests : ['Pessoa 1']); setCurrentGuest(uniqueGuests.length > 0 ? uniqueGuests[0] : 'Pessoa 1');
-        const isTable = MESAS.includes(order.client); if (isTable) { setSelectedTabToSettle({ ...order, firestoreId: null }); setCustomerName(''); } else { setCustomerName(order.client); setSelectedTabToSettle(null); }
-        setView('pos'); showToastMsg(`Pedido de ${order.client} carregado para edição.`);
+        setGuestList(uniqueGuests.length > 0 ? uniqueGuests : ['Pessoa 1']);
+        setCurrentGuest(uniqueGuests.length > 0 ? uniqueGuests[0] : 'Pessoa 1');
+
+        const isTable = MESAS.includes(order.client);
+        if (isTable) {
+          setSelectedTabToSettle({ ...order, firestoreId: null });
+          setCustomerName('');
+        } else {
+          setCustomerName(order.client);
+          setSelectedTabToSettle(null);
+        }
+        setView('pos');
+        showToastMsg(`Pedido de ${order.client} carregado para edição.`);
       }
     } catch (error) { console.error(error); showToastMsg("Erro ao processar ação.", "error"); }
-    setActionAuthModal({ show: false, action: null, order: null }); setActionPassword('');
+    setActionAuthModal({ show: false, action: null, order: null });
+    setActionPassword('');
   };
   
-  const triggerClearHistory = () => { setShowDeleteAuthModal(true); setDeletePasswordInput(''); };
+  const triggerClearHistory = () => {
+    setShowDeleteAuthModal(true);
+    setDeletePasswordInput('');
+  };
+
   const confirmClearHistory = async () => {
     const currentPass = settings?.settingsPassword || '1234';
     if (deletePasswordInput === currentPass) {
       try {
         const snapshot = await getDocs(query(getCollectionRef('orders')));
-        const batch = writeBatch(db); let count = 0;
-        snapshot.docs.forEach(docSnap => { if (docSnap.data().paymentStatus === 'PAGO') { batch.delete(docSnap.ref); count++; } });
-        if (count > 0) { await batch.commit(); showToastMsg(`${count} pedidos finalizados apagados!`, 'success'); } else { showToastMsg(`Nenhum pedido para apagar.`, 'success'); }
-        setShowDeleteAuthModal(false); setDeletePasswordInput('');
-      } catch (e) { console.error(e); showToastMsg("Erro ao apagar histórico.", "error"); }
-    } else { showToastMsg("Senha incorreta!", "error"); setDeletePasswordInput(''); }
+        const batch = writeBatch(db);
+        let count = 0;
+        snapshot.docs.forEach(docSnap => {
+          if (docSnap.data().paymentStatus === 'PAGO') {
+            batch.delete(docSnap.ref);
+            count++;
+          }
+        });
+        if (count > 0) {
+           await batch.commit();
+           showToastMsg(`${count} pedidos finalizados apagados!`, 'success');
+        } else {
+           showToastMsg(`Nenhum pedido para apagar.`, 'success');
+        }
+        setShowDeleteAuthModal(false);
+        setDeletePasswordInput('');
+      } catch (e) {
+        console.error(e);
+        showToastMsg("Erro ao apagar histórico.", "error");
+      }
+    } else {
+      showToastMsg("Senha incorreta!", "error");
+      setDeletePasswordInput('');
+    }
   };
 
-  const openEditOrderModal = (order) => { setEditingFutureOrder(order); setOrderClient(order.client); setOrderPhone(order.phone); setOrderDate(order.deliveryDate); setOrderTime(order.deliveryTime); setOrderObs(order.description); setOrderTotalValue(order.total); setOrderSignal(order.signal); setOrderSignalMethod(order.signalMethod || 'Pix'); setShowOrderModal(true); };
+  const openEditOrderModal = (order) => {
+    setEditingFutureOrder(order);
+    setOrderClient(order.client);
+    setOrderPhone(order.phone);
+    setOrderDate(order.deliveryDate);
+    setOrderTime(order.deliveryTime);
+    setOrderObs(order.description);
+    setOrderTotalValue(order.total);
+    setOrderSignal(order.signal);
+    setOrderSignalMethod(order.signalMethod || 'Pix');
+    setShowOrderModal(true);
+  };
 
   const handleImproveDescription = async () => {
-    if (!orderObs || orderObs.length < 5) return; setIsAiLoading(true);
+    if (!orderObs || orderObs.length < 5) return;
+    setIsAiLoading(true);
     const prompt = `Transforme esta anotação bruta de pedido de confeitaria em uma descrição comercial, clara e apetitosa em português. Mantenha todos os detalhes técnicos mas escreva de forma profissional para a ficha de produção. Texto original: "${orderObs}"`;
-    const improved = await callGemini(prompt); if (improved) setOrderObs(improved); setIsAiLoading(false);
+    const improved = await callGemini(prompt);
+    if (improved) setOrderObs(improved);
+    setIsAiLoading(false);
   };
 
   const saveFutureOrder = async () => {
-    if (!orderClient) return showToastMsg("Nome obrigatório", "error");
-    const totalVal = parseFloat(orderTotalValue) || 0; const signalVal = parseFloat(orderSignal) || 0;
-    const orderData = { client: orderClient, phone: orderPhone, deliveryDate: orderDate || new Date().toISOString().split('T')[0], deliveryTime: orderTime || '12:00', description: orderObs, total: totalVal, signal: signalVal, signalMethod: orderSignalMethod };
+    if (!orderClient) { showToastMsg("Nome obrigatório", "error"); return; }
+    const totalVal = parseFloat(orderTotalValue) || 0;
+    const signalVal = parseFloat(orderSignal) || 0;
+
+    const orderData = {
+      client: orderClient,
+      phone: orderPhone,
+      deliveryDate: orderDate || new Date().toISOString().split('T')[0],
+      deliveryTime: orderTime || '12:00',
+      description: orderObs,
+      total: totalVal,
+      signal: signalVal,
+      signalMethod: orderSignalMethod
+    };
 
     try {
-      if (editingFutureOrder) { await updateDoc(getDocRef('future_orders', editingFutureOrder.firestoreId), { ...orderData, updatedAt: new Date().toISOString() }); showToastMsg("Encomenda atualizada com sucesso!"); } 
-      else { await addDoc(getCollectionRef('future_orders'), { ...orderData, status: 'Pendente', createdAt: new Date().toISOString() }); if (signalVal > 0) await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Sinal: ${orderClient}`, total: signalVal, status: 'Pago', paymentStatus: 'PAGO', method: orderSignalMethod, payments: [{ method: orderSignalMethod, value: signalVal }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Sinal Encomenda', price: signalVal, qty: 1 }] }); showToastMsg("Encomenda salva!"); }
+      if (editingFutureOrder) {
+        await updateDoc(getDocRef('future_orders', editingFutureOrder.firestoreId), { ...orderData, updatedAt: new Date().toISOString() });
+        showToastMsg("Encomenda atualizada com sucesso!");
+      } else {
+        await addDoc(getCollectionRef('future_orders'), { ...orderData, status: 'Pendente', createdAt: new Date().toISOString() });
+        if (signalVal > 0) {
+          await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Sinal: ${orderClient}`, total: signalVal, status: 'Pago', paymentStatus: 'PAGO', method: orderSignalMethod, payments: [{ method: orderSignalMethod, value: signalVal }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Sinal Encomenda', price: signalVal, qty: 1 }] });
+        }
+        showToastMsg("Encomenda salva!");
+      }
     } catch(e) { console.error(e); showToastMsg("Erro ao salvar encomenda.", "error"); }
-    setShowOrderModal(false); setEditingFutureOrder(null); setOrderClient(''); setOrderPhone(''); setOrderObs(''); setOrderSignal(''); setOrderTotalValue(''); 
+
+    setShowOrderModal(false); 
+    setEditingFutureOrder(null);
+    setOrderClient(''); setOrderPhone(''); setOrderObs(''); setOrderSignal(''); setOrderTotalValue(''); 
   };
 
   const handleSettleOrder = async () => {
@@ -1244,13 +1660,21 @@ const PosView = ({ user, onBack, initialSettings }) => {
       const amountReceived = parseFloat(settleValue) || 0;
       await updateDoc(getDocRef('future_orders', selectedFutureOrder.firestoreId), { status: 'Concluído', finalPayment: amountReceived, finalPaymentMethod: settleMethod, completedAt: new Date().toISOString() });
       if (amountReceived > 0) await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
-      setSelectedFutureOrder(null); showToastMsg("Encerrada com sucesso!");
+      setSelectedFutureOrder(null); 
+      showToastMsg("Encerrada com sucesso!");
     } catch(e) { console.error(e); showToastMsg("Erro ao finalizar.", "error"); }
   };
 
-  const openWhatsApp = (phone) => { if (!phone) return; const cleanPhone = phone.replace(/\D/g, ''); const url = `https://wa.me/55${cleanPhone}`; window.open(url, '_blank'); };
+  const openWhatsApp = (phone) => {
+    if (!phone) return;
+    const cleanPhone = phone.replace(/\D/g, '');
+    const url = `https://wa.me/55${cleanPhone}`;
+    window.open(url, '_blank');
+  };
 
-  const handleSettingsAccess = () => { if (isSettingsUnlocked) { setView('settings'); } else { setShowSettingsPasswordModal(true); setSettingsPasswordInput(''); } };
+  const handleSettingsAccess = () => {
+    if (isSettingsUnlocked) { setView('settings'); } else { setShowSettingsPasswordModal(true); setSettingsPasswordInput(''); }
+  };
 
   const submitSettingsPassword = () => {
     const currentPass = settings?.settingsPassword || '1234';
@@ -1259,23 +1683,34 @@ const PosView = ({ user, onBack, initialSettings }) => {
   };
 
   const saveSettings = async () => {
-    try { const cleanData = Object.fromEntries(Object.entries(configForm).filter(([_, v]) => v !== undefined)); await setDoc(getDocRef('app_state', 'settings'), cleanData, { merge: true }); showToastMsg("Configurações Salvas!"); } catch (e) { console.error("Erro no saveSettings", e); showToastMsg("Erro ao salvar: " + e.message, "error"); }
+    try { 
+      const cleanData = Object.fromEntries(Object.entries(configForm).filter(([_, v]) => v !== undefined));
+      await setDoc(getDocRef('app_state', 'settings'), cleanData, { merge: true }); 
+      showToastMsg("Configurações Salvas!"); 
+    } 
+    catch (e) { 
+      console.error("Erro no saveSettings", e); 
+      showToastMsg("Erro ao salvar: " + e.message, "error"); 
+    }
   };
 
   const handleAddCashMovement = async () => {
     if (!movementValue || parseFloat(movementValue) <= 0 || !user) return;
-    try { await addDoc(getCollectionRef('cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); showToastMsg("Movimentação registrada!"); } catch (e) { console.error(e); showToastMsg("Erro ao registrar", "error"); }
+    try { await addDoc(getCollectionRef('cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); showToastMsg("Movimentação registrada!"); } 
+    catch (e) { console.error(e); showToastMsg("Erro ao registrar", "error"); }
   };
 
   const addNewProduct = async () => { 
     if (!newProdName || !newProdPrice || !user) return; 
     try { 
-      const priceNum = parseFloat(newProdName.toString().replace(',', '.'));
       const safePrice = parseFloat(newProdPrice.toString().replace(',', '.'));
       if (isNaN(safePrice)) throw new Error("Preço inválido.");
       await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: safePrice, category: newProdCat, stock: 50, icon: 'burger' }); 
-      setNewProdName(''); setNewProdPrice(''); showToastMsg("Produto adicionado!"); 
-    } catch(e) { console.error("Adicionar produto erro:", e); showToastMsg("Erro: " + e.message, "error"); }
+      setNewProdName(''); 
+      setNewProdPrice(''); 
+      showToastMsg("Produto adicionado!"); 
+    }
+    catch(e) { console.error("Adicionar produto erro:", e); showToastMsg("Erro: " + e.message, "error"); }
   };
   
   const handleUpdateProduct = async () => { 
@@ -1283,16 +1718,23 @@ const PosView = ({ user, onBack, initialSettings }) => {
     try { 
       const priceNum = parseFloat(editingProduct.price.toString().replace(',', '.'));
       await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: priceNum, category: editingProduct.category, stock: editingProduct.stock }); 
-      setEditingProduct(null); showToastMsg("Produto atualizado!"); 
-    } catch(e) { console.error(e); showToastMsg("Erro: " + e.message, "error"); }
+      setEditingProduct(null); 
+      showToastMsg("Produto atualizado!"); 
+    }
+    catch(e) { console.error(e); showToastMsg("Erro: " + e.message, "error"); }
   };
   
   const handleDeleteProduct = async () => { 
     setConfirmState({
-      isOpen: true, msg: 'Excluir este produto permanentemente?',
+      isOpen: true,
+      msg: 'Excluir este produto permanentemente?',
       action: async () => {
         if (editingProduct?.firestoreId) {
-          try { await deleteDoc(getDocRef('products', editingProduct.firestoreId)); setEditingProduct(null); showToastMsg("Produto excluído."); } catch(e) { console.error(e); showToastMsg("Erro excluir", "error");}
+          try {
+            await deleteDoc(getDocRef('products', editingProduct.firestoreId)); 
+            setEditingProduct(null);
+            showToastMsg("Produto excluído.");
+          } catch(e) { console.error(e); showToastMsg("Erro excluir", "error");}
         }
         setConfirmState({ isOpen: false, msg: '', action: null });
       }
@@ -1305,29 +1747,50 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const factoryResetSales = async () => {
     setConfirmState({
-      isOpen: true, msg: 'ATENÇÃO: Deseja apagar TODAS as vendas, fluxo de caixa, comandas e encomendas de teste? (Seus Produtos e Configurações serão mantidos). Esta ação é definitiva!',
+      isOpen: true,
+      msg: 'ATENÇÃO: Deseja apagar TODAS as vendas, fluxo de caixa, comandas e encomendas de teste? (Seus Produtos e Configurações serão mantidos). Esta ação é definitiva!',
       action: async () => {
         setConfirmState({ isOpen: false, msg: '', action: null });
         try {
           const cols = ['orders', 'records_v2', 'closed_weeks', 'cash_movements', 'future_orders'];
           for (const c of cols) {
             const snapshot = await getDocs(query(getCollectionRef(c)));
-            if (!snapshot.empty) { const batch = writeBatch(db); snapshot.docs.forEach(docSnap => batch.delete(docSnap.ref)); await batch.commit(); }
+            if (!snapshot.empty) {
+              const batch = writeBatch(db);
+              snapshot.docs.forEach(docSnap => batch.delete(docSnap.ref));
+              await batch.commit();
+            }
           }
           await setDoc(getDocRef('app_state', 'calculator'), { bills: { 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '' }, coins: { 1: '', 0.50: '', 0.25: '', 0.10: '', 0.05: '' }, pix: '' });
-          showToastMsg("Sistema zerado e pronto para a inauguração!", "success"); setOrderCounter(1);
-        } catch (e) { console.error("Erro ao zerar:", e); showToastMsg("Erro ao limpar dados.", "error"); }
+          
+          showToastMsg("Sistema zerado e pronto para a inauguração!", "success");
+          setOrderCounter(1);
+        } catch (e) {
+          console.error("Erro ao zerar:", e);
+          showToastMsg("Erro ao limpar dados.", "error");
+        }
       }
     });
   };
 
+  // Cálculo de Pagamento Dinâmico para a Mesa Inteira ou Parcial
   const safeTabSettleItems = selectedTabToSettle?.items || [];
-  const itemsToPayLive = selectedTabToSettle ? (payingGuest === 'Mesa Completa' ? safeTabSettleItems : safeTabSettleItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest)) : (payingGuest === 'Mesa Completa' ? cart : cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest));
-  const modalTotal = itemsToPayLive.reduce((a, i) => a + calcItemTotal(i), 0);
-  const modalPaid = partialPayments.reduce((a, p) => a + p.value, 0);
+  const itemsToPayLive = selectedTabToSettle 
+    ? (payingGuest === 'Mesa Completa' ? safeTabSettleItems : safeTabSettleItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest)) 
+    : (payingGuest === 'Mesa Completa' ? cart : cart.filter(i => (i.guest || 'Pessoa 1') === payingGuest));
+    
+  const modalTotal = itemsToPayLive.reduce((acc, item) => acc + calcItemTotal(item), 0);
+  const modalPaid = partialPayments.reduce((acc, p) => acc + p.value, 0);
   const modalRemaining = Math.max(0, modalTotal - modalPaid);
-  const liveChange = Math.max(0, (parseFloat((paymentInputValue||'').replace(',', '.'))||0) - modalRemaining);
+  
+  const liveChange = useMemo(() => {
+    if (!paymentInputValue) return 0;
+    const val = parseFloat(paymentInputValue.replace(',', '.'));
+    return Math.max(0, val - modalRemaining);
+  }, [paymentInputValue, modalRemaining]);
+
   const uniqueGuestsInTab = selectedTabToSettle ? [...new Set(safeTabSettleItems.map(i => i.guest || 'Pessoa 1'))] : [...new Set(cart.map(i => i.guest || 'Pessoa 1'))];
+
   const filtered = products.filter(p => (selectedCategory === 'Todos' || p.category === selectedCategory) && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const getFilteredOrders = () => {
@@ -1335,9 +1798,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (!o || o.paymentStatus !== 'PAGO' || !o.date) return false;
       try {
         const orderDate = new Date(o.date);
-        if (reportMode === 'daily') { return orderDate.getDate() === reportDate.getDate() && orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear(); } 
-        else if (reportMode === 'weekly') { return getWeekId(o.date.split('T')[0] || o.date) === getWeekId(reportDate.toISOString().split('T')[0]); } 
-        else { return orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear(); }
+        if (reportMode === 'daily') {
+            return orderDate.getDate() === reportDate.getDate() && orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+        } else if (reportMode === 'weekly') {
+            return getWeekId(String(o.date).split('T')[0] || String(o.date)) === getWeekId(reportDate.toISOString().split('T')[0]);
+        } else {
+            return orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+        }
       } catch { return false; }
     });
   };
@@ -1347,7 +1814,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const salesByMethod = filteredOrders.reduce((acc, order) => {
     if (order.payments && Array.isArray(order.payments)) {
       order.payments.forEach(p => { const val = Number(p.value) || 0; if (p.method === 'Dinheiro') acc.dinheiro += val; else if (p.method === 'Pix') acc.pix += val; else if (['Crédito', 'Débito'].includes(p.method)) acc.cartao += val; });
-    } else { const val = Number(order.total) || 0; const m = order.method || ''; if (m.includes('Dinheiro')) acc.dinheiro += val; else if (m.includes('Pix') || m.includes('PIX')) acc.pix += val; else acc.cartao += val; }
+    }
+    else { const val = Number(order.total) || 0; const m = order.method || ''; if (m.includes('Dinheiro')) acc.dinheiro += val; else if (m.includes('Pix') || m.includes('PIX')) acc.pix += val; else acc.cartao += val; }
     return acc;
   }, { dinheiro: 0, pix: 0, cartao: 0 });
   
@@ -1355,7 +1823,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     if (!m.date) return false;
     const mDate = new Date(m.date); 
     if (reportMode === 'daily') return mDate.getDate() === reportDate.getDate() && mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear(); 
-    else if (reportMode === 'weekly') return getWeekId(m.date.split('T')[0] || m.date) === getWeekId(reportDate.toISOString().split('T')[0]);
+    else if (reportMode === 'weekly') return getWeekId(String(m.date).split('T')[0] || String(m.date)) === getWeekId(reportDate.toISOString().split('T')[0]);
     else return mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear();
   });
   
@@ -1367,7 +1835,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const getWeek = (d) => { const date = new Date(d); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7); const w1 = new Date(date.getFullYear(), 0, 4); return 1 + Math.round(((date.getTime() - w1.getTime()) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7); }; 
     const cw = getWeek(now); let day = 0, week = 0, month = 0, year = 0; 
     futureOrders.forEach(o => {
-      if (o.status === 'Cancelado') return; const d = o.deliveryDate; const val = Number(o.total) || 0; if (d === today) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d)) === cw && d.startsWith(cy)) week += val;
+      if (o.status === 'Cancelado') return; const d = String(o.deliveryDate || ''); const val = Number(o.total) || 0; if (d === today) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d)) === cw && d.startsWith(cy)) week += val;
     });
     return { day, week, month, year };
   }, [futureOrders]);
@@ -1411,7 +1879,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         )}
 
         {actionAuthModal.show && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertOctagon size={48} /></div><h3 className="text-xl font-bold mb-2 text-center">{actionAuthModal.action === 'cancel' ? 'Cancelar Pedido' : 'Editar Pedido'}</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação requer autorização de gerente.</p><input type="password" autoFocus placeholder="Senha do Caixa" className="w-full border p-3 text-center mb-4 rounded-xl" value={actionPassword} onChange={e=>setActionPassword(e.target.value)} onKeyDown={e=>e.key==='Enter' && (actionPassword===(settings.posPassword||'1234')?performAction():showToastMsg("Senha incorreta","error"))} /><div className="flex gap-2"><button onClick={()=>{setActionAuthModal({show:false,action:null,order:null});setActionPassword('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={()=>actionPassword===(settings.posPassword||'1234')?performAction():showToastMsg("Senha incorreta","error")} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertOctagon size={48} /></div><h3 className="text-xl font-bold mb-2 text-center">{actionAuthModal.action === 'cancel' ? 'Cancelar Pedido' : 'Editar Pedido'}</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação requer autorização de gerente.</p><input type="password" autoFocus placeholder="Senha do Caixa" className="w-full border p-3 text-center mb-4 rounded-xl" value={actionPassword} onChange={e=>setActionPassword(e.target.value)} onKeyDown={e=>e.key==='Enter' && confirmActionAuth()} /><div className="flex gap-2"><button onClick={()=>{setActionAuthModal({show:false,action:null,order:null});setActionPassword('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={confirmActionAuth} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
         )}
 
         {showDeleteAuthModal && (
@@ -1560,30 +2028,59 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {view === 'orders' && (
-          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
-            <header className="mb-8 flex justify-between items-center"><h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><Cake size={32} className="text-pink-600" /> Encomendas e Bolos</h1><button onClick={() => { setEditingFutureOrder(null); setOrderClient(''); setOrderPhone(''); setOrderObs(''); setOrderSignal(''); setOrderTotalValue(''); setShowOrderModal(true); }} className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-pink-600/20 flex items-center gap-2 active:scale-95 transition-all"><PlusCircle size={20} /> Nova Encomenda</button></header>
-            <div className="grid grid-cols-4 gap-4 mb-8">
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Hoje</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.day)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Semana</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.week)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Mês</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.month)}</div></div>
-              <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Ano</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.year)}</div></div>
-            </div>
-            <div className="space-y-4">{futureOrders.map(order => (
-              <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all cursor-pointer relative group">
-                {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
-                <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800">{order.client}</h3><div className="flex items-center gap-2 mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button></div></div><div className="text-right mr-10 md:mr-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição da Produção</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description || 'Sem detalhes.'}</p></div>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Edit3 size={14}/> Editar</button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDeleteFutureOrder(order); }} className="text-xs text-red-500 hover:text-red-700 font-bold z-10 px-4 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
-                  </div>
+        {/* MODAL COZINHA AMPLIADA */}
+        {kitchenExpandedOrder && (
+          <div className="fixed inset-0 bg-slate-900 z-[150] flex flex-col animate-in fade-in zoom-in-95">
+            <div className="p-6 bg-slate-800 text-white flex justify-between items-center shadow-lg">
+              <div className="flex items-center gap-4">
+                <ChefHat size={40} className="text-orange-500"/>
+                <div>
+                  <h2 className="text-4xl font-black uppercase tracking-wider">{kitchenExpandedOrder.client}</h2>
+                  <p className="text-slate-400 font-bold text-lg mt-1">Hora do Pedido: {kitchenExpandedOrder.time}</p>
                 </div>
               </div>
-            ))}
-            {futureOrders.length === 0 && <div className="text-center text-slate-400 py-10 font-medium">Nenhuma encomenda registrada.</div>}
+              <button onClick={() => setKitchenExpandedOrder(null)} className="p-4 bg-slate-700 hover:bg-slate-600 rounded-full transition-colors"><X size={32}/></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 md:p-10 bg-slate-100">
+              <div className="max-w-5xl mx-auto space-y-6">
+                {(kitchenExpandedOrder.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || []).map((item, idx) => (
+                  <div key={idx} className="bg-white p-6 rounded-3xl shadow-lg border-l-[12px] border-orange-500">
+                    <div className="flex items-start gap-5">
+                      <span className="text-5xl font-black text-orange-600 bg-orange-100 px-5 py-3 rounded-2xl min-w-[100px] text-center">{item.qty}x</span>
+                      <span className="text-5xl font-bold text-slate-800 leading-tight mt-1">{item.name} <span className="text-3xl font-medium text-slate-400 ml-2">({item.guest || 'Pessoa 1'})</span></span>
+                    </div>
+                    
+                    {item.subItems && item.subItems.length > 0 && (
+                      <div className="mt-5 pl-[120px] flex flex-wrap gap-3">
+                        {item.subItems.map((sub, sIdx) => (
+                          <div key={sIdx} className="text-3xl font-bold text-slate-600 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
+                            + {sub.qty * item.qty}x {sub.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {item.obs && (
+                      <div className="mt-6 pl-[120px]">
+                        <div className="text-3xl font-black text-red-600 bg-red-50 p-5 rounded-2xl border-4 border-red-200">
+                          OBS: {item.obs}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-6 bg-white border-t border-slate-200 flex gap-4 shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
+              <button onClick={() => setKitchenExpandedOrder(null)} className="flex-1 py-8 text-2xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-3xl transition-colors">Voltar</button>
+              <button onClick={() => {
+                const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
+                showToastMsg(`Pedido #${String(kitchenExpandedOrder.id).slice(0,4)} finalizado na cozinha.`);
+                setKitchenExpandedOrder(null);
+              }} className="flex-[2] py-8 text-3xl font-black bg-orange-500 text-white hover:bg-orange-600 rounded-3xl shadow-xl shadow-orange-500/30 transition-all active:scale-95 flex items-center justify-center gap-3">
+                <CheckSquare size={40}/> Marcar como Pronto
+              </button>
             </div>
           </div>
         )}
@@ -1710,8 +2207,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {view === 'cash' && <CashControl user={user} orders={orders} />}
-
         {view === 'admin' && (
           <div className="p-8 h-screen overflow-y-auto bg-slate-50">
             <header className="mb-8 flex justify-between items-center">
@@ -1784,7 +2279,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       {products.map(p => (
                         <tr key={p.id} className="hover:bg-blue-50/50">
                           <td className="p-4 font-bold text-slate-800">{p.name}</td><td className="p-4"><span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold">{p.category}</span></td><td className="p-4 font-medium">{formatMoney(p.price)}</td><td className="p-4 text-center"><span className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold">{p.stock} un</span></td>
-                          <td className="p-4 text-right"><button onClick={()=>setEditingProduct(p)} className="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg flex items-center gap-1 ml-auto"><Edit3 size={14} /> Editar</button></td>
+                          <td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-xs"><Edit3 size={14} /> Editar</button><button onClick={()=>{setConfirmState({isOpen:true,msg:`Excluir ${p.name}?`,action:async()=>{try{await deleteDoc(getDocRef('products',p.firestoreId));setConfirmState({isOpen:false});showToastMsg('Excluído');}catch(e){}}});}} className="text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-xs"><Trash2 size={14} /> Excluir</button></td>
                         </tr>
                       ))}
                     </tbody>
