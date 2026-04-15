@@ -81,7 +81,6 @@ const DEFAULT_PRODUCTS_SEED = [
   { id: 7, name: 'Ovo 1 un', price: 3.00, category: 'Adicionais', stock: 50, icon: 'fries' },
 ];
 
-const CATEGORIES = ['Tapiocas', 'Cuscuz', 'Pão', 'Salgados e Caldos', 'Bolos e Doces', 'Bebidas', 'Diversos', 'Adicionais'];
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
@@ -651,7 +650,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderCounter, setOrderCounter] = useState(1000);
@@ -664,9 +663,17 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   useEffect(() => {
     if (!user) return;
     const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => {
-      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
-      setProducts(list);
-      setCategories([...CATEGORIES]);
+      if (snap.empty) {
+        const batch = writeBatch(db);
+        DEFAULT_PRODUCTS_SEED.forEach(p => { batch.set(doc(getCollectionRef('products'), p.id.toString()), p); });
+        batch.commit().catch(e => console.error("Erro ao popular BD:", e));
+      } else {
+        const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.id - b.id);
+        setProducts(list);
+        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
+        setCategories(fetchedCategories);
+        setSelectedCategory(prev => fetchedCategories.includes(prev) ? prev : (fetchedCategories[0] || ''));
+      }
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => d.data());
@@ -1084,7 +1091,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [renameModal, setRenameModal] = useState({ show: false, oldName: '', newName: '' });
 
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [cart, setCart] = useState([]);
@@ -1100,7 +1107,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [newProdName, setNewProdName] = useState('');
   const [newProdPrice, setNewProdPrice] = useState('');
-  const [newProdCat, setNewProdCat] = useState('Tapiocas');
+  const [newProdCat, setNewProdCat] = useState('');
 
   const [cashMovements, setCashMovements] = useState([]);
   const [showCashMovementModal, setShowCashMovementModal] = useState(false);
@@ -1169,16 +1176,12 @@ const PosView = ({ user, onBack, initialSettings }) => {
   useEffect(() => {
     if (!user) return;
     const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => { 
-      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); 
+      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.id - b.id); 
       setProducts(list); 
       
       const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
-      fetchedCategories.sort((a, b) => {
-        const indexA = CATEGORIES.indexOf(a);
-        const indexB = CATEGORIES.indexOf(b);
-        return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
-      });
-      setCategories([...fetchedCategories]);
+      setCategories(fetchedCategories);
+      setSelectedCategory(prev => fetchedCategories.includes(prev) ? prev : (fetchedCategories[0] || ''));
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id); setOrders(list); 
@@ -2233,7 +2236,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome do Produto</label><input value={newProdName} onChange={(e) => setNewProdName(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Ex: X-Tudo, Bolo de Cenoura..." /></div>
                   <div className="grid grid-cols-2 gap-5">
                     <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0.00" /></div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={newProdCat} onChange={(e) => setNewProdCat(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label>
+                      <input type="text" list="cat-list" value={newProdCat} onChange={(e) => setNewProdCat(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Ex: Lanches, Bebidas..." />
+                      <datalist id="cat-list">
+                        {categories.map(c => <option key={c} value={c} />)}
+                      </datalist>
+                    </div>
                   </div>
                   <button onClick={addNewProduct} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20 active:scale-95 text-lg mt-2">Adicionar Novo Produto</button>
                 </div>
@@ -2282,7 +2291,16 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="text-xl font-bold text-slate-800">Editar Produto</h3><button onClick={() => setEditingProduct(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button></div>
               <div className="p-6 space-y-5 bg-white">
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800 bg-white">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label>
+                    <input type="text" list="edit-cat-list" value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800 bg-white" placeholder="Categoria" />
+                    <datalist id="edit-cat-list">
+                      {categories.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                </div>
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"><label className="block text-xs font-bold text-slate-500 uppercase mb-3 text-center">Quantidade em Estoque</label><div className="flex items-center justify-center gap-4"><button onClick={() => setEditingProduct({ ...editingProduct, stock: Math.max(0, editingProduct.stock - 1) })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-red-500 shadow-sm transition-all active:scale-90"><Minus size={20} /></button><input type="number" value={editingProduct.stock} onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })} className="w-24 p-3 border border-slate-300 bg-white rounded-xl focus:border-blue-500 outline-none text-center font-black text-xl" /><button onClick={() => setEditingProduct({ ...editingProduct, stock: editingProduct.stock + 1 })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-green-600 shadow-sm transition-all active:scale-90"><Plus size={20} /></button></div></div>
                 <div className="pt-6 flex gap-3 border-t border-slate-100">
                   <button onClick={() => confirmDeleteProduct(editingProduct)} className="p-3.5 bg-red-50 text-red-600 font-bold hover:bg-red-100 rounded-xl transition-colors border border-red-100" title="Excluir Produto"><Trash2 size={20} /></button>
