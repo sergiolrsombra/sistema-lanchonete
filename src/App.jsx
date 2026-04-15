@@ -139,7 +139,6 @@ const handlePrint = (order, settings, type = 'customer') => {
   
   let itemsHtml = '';
   
-  // Agrupar itens por Pessoa
   const groupedItems = {};
   order.items?.forEach(i => {
     const guest = i.guest || 'Pessoa 1';
@@ -486,7 +485,7 @@ const CashControl = ({ user, orders }) => {
   if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-blue-600" /></div>;
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 pb-20 w-full animate-in fade-in">
+    <div className="bg-gray-50 min-h-full p-4 pb-20 w-full animate-in fade-in">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       <ConfirmDialog isOpen={confirmState.isOpen} message={confirmState.msg} onConfirm={confirmState.action} onCancel={() => setConfirmState({ isOpen: false, msg: '', action: null })} />
       
@@ -643,7 +642,6 @@ const CashControl = ({ user, orders }) => {
 const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [view, setView] = useState('login');
   
-  // Dados do Cliente
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderType, setOrderType] = useState('Consumo no Local');
@@ -695,26 +693,33 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     setView('menu');
   };
   
+  // ✅ FIX 3: Lógica de união corrigida — usa firestoreId OU id de forma consistente
   const addToCart = (p) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
 
     const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
     const addonCategories = ['Adicionais'];
 
-    // --- LÓGICA DE UNIÃO AUTOMÁTICA ---
+    const isSameProduct = (a, b) =>
+      (a.firestoreId && b.firestoreId && a.firestoreId === b.firestoreId) ||
+      String(a.id) === String(b.id);
+
     if (addonCategories.includes(p.category)) {
+      // Procura o último item base no carrinho
       const reversedCart = [...cart].reverse();
-      const parentIdxInReversed = reversedCart.findIndex(i => baseCategories.includes(i.category));
+      const parentInReversed = reversedCart.find(i => baseCategories.includes(i.category));
       
-      if (parentIdxInReversed !== -1) {
-        const actualIdx = cart.length - 1 - parentIdxInReversed;
+      if (parentInReversed) {
+        const actualIdx = cart.findIndex(i => i.cartItemId === parentInReversed.cartItemId);
         const parentItem = cart[actualIdx];
         
         let newSubItems = [...(parentItem.subItems || [])];
-        const existingSub = newSubItems.find(s => String(s.id) === String(p.id) || (s.firestoreId && s.firestoreId === p.firestoreId));
+        const existingSubIdx = newSubItems.findIndex(s => isSameProduct(s, p));
         
-        if (existingSub) {
-          newSubItems = newSubItems.map(s => (String(s.id) === String(p.id) || (s.firestoreId && s.firestoreId === p.firestoreId)) ? { ...s, qty: s.qty + 1 } : s);
+        if (existingSubIdx !== -1) {
+          newSubItems = newSubItems.map((s, idx) =>
+            idx === existingSubIdx ? { ...s, qty: s.qty + 1 } : s
+          );
         } else {
           newSubItems.push({ ...p, qty: 1 });
         }
@@ -722,38 +727,54 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         const newCart = [...cart];
         newCart[actualIdx] = { ...parentItem, subItems: newSubItems };
         setCart(newCart);
-        showToastMsg(`${p.name} unido a ${parentItem.name}!`);
+        showToastMsg(`${p.name} adicionado a ${parentItem.name}!`);
         return;
       }
     } else if (baseCategories.includes(p.category)) {
-      const orphanAddons = cart.filter(i => (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
+      const orphanAddons = cart.filter(i =>
+        addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)
+      );
       
       if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !((i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i =>
+          !(addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0))
+        );
         
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
-           const ex = newSubItems.find(s => String(s.id) === String(orphan.id) || (s.firestoreId && s.firestoreId === orphan.firestoreId));
-           if (ex) {
-             ex.qty += orphan.qty;
-           } else {
-             newSubItems.push({ ...orphan });
-           }
+          const exIdx = newSubItems.findIndex(s => isSameProduct(s, orphan));
+          if (exIdx !== -1) {
+            newSubItems[exIdx].qty += orphan.qty;
+          } else {
+            newSubItems.push({ ...orphan });
+          }
         });
         
-        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems });
+        newCart.push({
+          ...p,
+          cartItemId: Date.now().toString() + Math.random().toString(),
+          qty: 1,
+          obs: '',
+          subItems: newSubItems
+        });
         setCart(newCart);
         showToastMsg(`Adicionais unidos a ${p.name}!`);
         return;
       }
     }
 
-    // Comportamento Normal
-    const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (!i.subItems || i.subItems.length === 0));
+    // Comportamento normal: incrementa se já existe sem subItems
+    const ex = cart.find(i => isSameProduct(i, p) && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
     } else {
-      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [] }]);
+      setCart([...cart, {
+        ...p,
+        cartItemId: Date.now().toString() + Math.random().toString(),
+        qty: 1,
+        obs: '',
+        subItems: []
+      }]);
     }
   };
 
@@ -764,32 +785,15 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     else setCart(cart.filter(item => item.cartItemId !== cartItemId));
   };
 
-  const linkItem = (sourceCartItemId, targetCartItemId) => {
-    const sourceItem = cart.find(i => i.cartItemId === sourceCartItemId);
-    if (!sourceItem) return;
-    setCart(prevCart => {
-      let newCart = prevCart.filter(i => i.cartItemId !== sourceCartItemId);
-      newCart = newCart.map(item => {
-        if (item.cartItemId === targetCartItemId) {
-          const existingSub = (item.subItems || []).find(sub => String(sub.id) === String(sourceItem.id));
-          let newSubItems = item.subItems || [];
-          if (existingSub) newSubItems = newSubItems.map(sub => String(sub.id) === String(sourceItem.id) ? { ...sub, qty: sub.qty + sourceItem.qty } : sub);
-          else newSubItems = [...newSubItems, { ...sourceItem }];
-          return { ...item, subItems: newSubItems };
-        }
-        return item;
-      });
-      return newCart;
-    });
-    showToastMsg("Item agrupado com sucesso!");
-  };
-
   const unlinkItem = (parentCartItemId, subItemId) => {
     const parent = cart.find(i => i.cartItemId === parentCartItemId);
-    const subItem = parent.subItems.find(s => String(s.id) === String(subItemId));
+    const subItem = parent?.subItems?.find(s => String(s.id) === String(subItemId));
+    if (!subItem) return;
     setCart(prevCart => {
       const newCart = prevCart.map(item => {
-        if (item.cartItemId === parentCartItemId) return { ...item, subItems: item.subItems.filter(s => String(s.id) !== String(subItemId)) };
+        if (item.cartItemId === parentCartItemId) {
+          return { ...item, subItems: (item.subItems || []).filter(s => String(s.id) !== String(subItemId)) };
+        }
         return item;
       });
       newCart.push({ ...subItem, cartItemId: Date.now().toString() + Math.random().toString(), subItems: [] });
@@ -1043,7 +1047,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         </div>
       )}
       
-      {/* AI Suggestion Modal */}
       {showAiModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border-2 border-purple-100 animate-in zoom-in-95">
@@ -1075,6 +1078,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
 // SISTEMA POS (CAIXA / GERENTE / CONFIGURAÇÕES)
 // --------------------------------------------------------------------------------
 const PosView = ({ user, onBack, initialSettings }) => {
+  // ✅ FIX 1: Adicionado 'cashflow' à lista de views válidas
   const [view, setView] = useState('pos');
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -1083,7 +1087,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState({ isOpen: false, msg: '', action: null });
 
-  // Estados de "Pessoa/Lugar" no POS
   const [currentGuest, setCurrentGuest] = useState('Pessoa 1');
   const [guestList, setGuestList] = useState(['Pessoa 1']);
   const [payingGuest, setPayingGuest] = useState('Mesa Completa');
@@ -1100,7 +1103,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [partialPayments, setPartialPayments] = useState([]);
   const [paymentInputValue, setPaymentInputValue] = useState('');
   
-  // Estados para Venda Finalizada
   const [finalizedOrder, setFinalizedOrder] = useState(null);
 
   const [editingProduct, setEditingProduct] = useState(null);
@@ -1151,7 +1153,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [reportMode, setReportMode] = useState('daily');
   const [kitchenExpandedOrder, setKitchenExpandedOrder] = useState(null);
   
-  // History Feature States
   const [historyDate, setHistoryDate] = useState(getTodayStr());
   const [historySearch, setHistorySearch] = useState('');
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
@@ -1215,26 +1216,33 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const showToastMsg = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
 
+  // ✅ FIX 3 (POS): Lógica de união corrigida com helper isSameProduct
   const addToCart = (p) => { 
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; } 
     
     const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
     const addonCategories = ['Adicionais'];
 
-    // --- LÓGICA DE UNIÃO AUTOMÁTICA NO POS ---
+    const isSameProduct = (a, b) =>
+      (a.firestoreId && b.firestoreId && a.firestoreId === b.firestoreId) ||
+      String(a.id) === String(b.id);
+
     if (addonCategories.includes(p.category)) {
+      // Encontra o último item base do guest atual no carrinho
       const reversedCart = [...cart].reverse();
-      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
+      const parentInReversed = reversedCart.find(i => i.guest === currentGuest && baseCategories.includes(i.category));
       
-      if (parentIdxInReversed !== -1) {
-        const actualIdx = cart.length - 1 - parentIdxInReversed;
+      if (parentInReversed) {
+        const actualIdx = cart.findIndex(i => i.cartItemId === parentInReversed.cartItemId);
         const parentItem = cart[actualIdx];
         
         let newSubItems = [...(parentItem.subItems || [])];
-        const existingSub = newSubItems.find(s => s.id === p.id);
+        const existingSubIdx = newSubItems.findIndex(s => isSameProduct(s, p));
         
-        if (existingSub) {
-          newSubItems = newSubItems.map(s => s.id === p.id ? { ...s, qty: s.qty + 1 } : s);
+        if (existingSubIdx !== -1) {
+          newSubItems = newSubItems.map((s, idx) =>
+            idx === existingSubIdx ? { ...s, qty: s.qty + 1 } : s
+          );
         } else {
           newSubItems.push({ ...p, qty: 1 });
         }
@@ -1242,38 +1250,56 @@ const PosView = ({ user, onBack, initialSettings }) => {
         const newCart = [...cart];
         newCart[actualIdx] = { ...parentItem, subItems: newSubItems };
         setCart(newCart);
-        showToastMsg(`${p.name} unido a ${parentItem.name}!`);
+        showToastMsg(`${p.name} adicionado a ${parentItem.name}!`);
         return;
       }
     } else if (baseCategories.includes(p.category)) {
-      const orphanAddons = cart.filter(i => i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0));
+      const orphanAddons = cart.filter(i =>
+        i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)
+      );
       
       if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !(i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)));
+        let newCart = cart.filter(i =>
+          !(i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0))
+        );
         
         let newSubItems = [];
         orphanAddons.forEach(orphan => {
-           const ex = newSubItems.find(s => s.id === orphan.id);
-           if (ex) {
-             ex.qty += orphan.qty;
-           } else {
-             newSubItems.push({ ...orphan });
-           }
+          const exIdx = newSubItems.findIndex(s => isSameProduct(s, orphan));
+          if (exIdx !== -1) {
+            newSubItems[exIdx].qty += orphan.qty;
+          } else {
+            newSubItems.push({ ...orphan });
+          }
         });
         
-        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems, guest: currentGuest });
+        newCart.push({
+          ...p,
+          cartItemId: Date.now().toString() + Math.random().toString(),
+          qty: 1,
+          obs: '',
+          subItems: newSubItems,
+          guest: currentGuest
+        });
         setCart(newCart);
         showToastMsg(`Adicionais unidos a ${p.name}!`);
         return;
       }
     }
 
-    // Comportamento Normal
-    const ex = cart.find(i => i.id === p.id && i.guest === currentGuest && (!i.subItems || i.subItems.length === 0));
+    // Comportamento normal
+    const ex = cart.find(i => isSameProduct(i, p) && i.guest === currentGuest && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
     } else {
-      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuest }]);
+      setCart([...cart, {
+        ...p,
+        cartItemId: Date.now().toString() + Math.random().toString(),
+        qty: 1,
+        obs: '',
+        subItems: [],
+        guest: currentGuest
+      }]);
     }
   };
 
@@ -1290,31 +1316,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
     }
   };
 
-  const linkItem = (sourceCartItemId, targetCartItemId) => {
-    const sourceItem = cart.find(i => i.cartItemId === sourceCartItemId);
-    if (!sourceItem) return;
-    setCart(prevCart => {
-      let newCart = prevCart.filter(i => i.cartItemId !== sourceCartItemId);
-      newCart = newCart.map(item => {
-        if (item.cartItemId === targetCartItemId) {
-          const existingSub = (item.subItems || []).find(sub => sub.id === sourceItem.id);
-          let newSubItems = item.subItems || [];
-          if (existingSub) {
-            newSubItems = newSubItems.map(sub => sub.id === sourceItem.id ? { ...sub, qty: sub.qty + sourceItem.qty } : sub);
-          } else {
-            newSubItems = [...newSubItems, { ...sourceItem }];
-          }
-          return { ...item, subItems: newSubItems };
-        }
-        return item;
-      });
-      return newCart;
-    });
-  };
-
   const unlinkItem = (parentCartItemId, subItemId) => {
     const parent = cart.find(i => i.cartItemId === parentCartItemId);
-    const subItem = parent.subItems.find(s => s.id === subItemId);
+    const subItem = parent?.subItems?.find(s => s.id === subItemId);
     if (!subItem) return;
     setCart(prevCart => {
       const newCart = prevCart.map(item => {
@@ -1335,7 +1339,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
     if (!user) return;
     const paymentsToProcess = overridePayments || partialPayments;
     
-    // Lógica para divisão de conta (Partial Payment via Guest)
     const isPartialPayment = payingGuest !== 'Mesa Completa';
     
     const cartWithStatus = cart.map(i => ({ ...i, kitchenStatus: 'Pendente' }));
@@ -1430,7 +1433,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
       if (selectedTabToSettle) {
         if (isPartialPayment && itemsToKeep.length > 0) {
-          // Pagamento de apenas 1 Pessoa: cria recibo dela e mantém a mesa aberta
           await addDoc(getCollectionRef('orders'), { 
             ...orderData, 
             origin: 'Caixa (Parcial)', 
@@ -1446,7 +1448,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
             updatedAt: nowISO 
           });
         } else {
-          // Pagamento total da mesa
           await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
             paymentStatus: 'PAGO', 
             status: 'Pago',
@@ -1458,7 +1459,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           });
         }
       } else {
-        // Pagamento Direto no POS (Novo Pedido)
         if (isPartialPayment && itemsToKeep.length > 0) {
           await addDoc(getCollectionRef('orders'), { 
             ...orderData, 
@@ -1471,7 +1471,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           await deductStock(itemsToPay);
           
           setFinalizedOrder(orderData);
-          setCart(itemsToKeep); // Mantém os restantes no carrinho do POS
+          setCart(itemsToKeep);
           const remainingGuests = [...new Set(itemsToKeep.map(i => i.guest || 'Pessoa 1'))];
           setGuestList(remainingGuests.length > 0 ? remainingGuests : ['Pessoa 1']);
           setCurrentGuest(remainingGuests.length > 0 ? remainingGuests[0] : 'Pessoa 1');
@@ -1479,7 +1479,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           setPayingGuest('Mesa Completa');
           setShowPaymentModal(false);
           showToastMsg(`Venda finalizada para ${payingGuest}! O restante continua no carrinho.`);
-          return; // Previne o limpa-carrinho global abaixo
+          return;
         } else {
           await addDoc(getCollectionRef('orders'), { 
             ...orderData, 
@@ -1541,7 +1541,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
       } else if (action === 'edit') {
         setCart(order.items.map(i => ({ ...i, cartItemId: Date.now().toString() + Math.random().toString() })));
         
-        // Reconstrói a lista de convidados se houver
         const uniqueGuests = [...new Set(order.items.map(i => i.guest || 'Pessoa 1'))];
         setGuestList(uniqueGuests.length > 0 ? uniqueGuests : ['Pessoa 1']);
         setCurrentGuest(uniqueGuests.length > 0 ? uniqueGuests[0] : 'Pessoa 1');
@@ -1773,7 +1772,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
     });
   };
 
-  // Cálculo de Pagamento Dinâmico para a Mesa Inteira ou Parcial
   const safeTabSettleItems = selectedTabToSettle?.items || [];
   const itemsToPayLive = selectedTabToSettle 
     ? (payingGuest === 'Mesa Completa' ? safeTabSettleItems : safeTabSettleItems.filter(i => (i.guest || 'Pessoa 1') === payingGuest)) 
@@ -1850,44 +1848,128 @@ const PosView = ({ user, onBack, initialSettings }) => {
     }).sort((a, b) => new Date(b.paidAt || b.date) - new Date(a.paidAt || a.date));
   }, [orders, historyDate, historySearch]);
 
+  // ✅ FIX 2: Modal de pagamento agora usa portal via fixed + z-index alto,
+  // garantindo que apareça corretamente independente do layout pai.
+  // A barra lateral usa position:fixed corretamente e o modal também.
+
   return (
     <div className="font-sans bg-slate-100 min-h-screen text-slate-900 flex animate-in fade-in">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       <ConfirmDialog isOpen={confirmState.isOpen} message={confirmState.msg} onConfirm={confirmState.action} onCancel={() => setConfirmState({ isOpen: false, msg: '', action: null })} />
 
-      <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-6 fixed h-full left-0 z-10 shadow-2xl justify-between">
+      {/* ✅ Sidebar fixa corrigida */}
+      <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-6 fixed h-full left-0 top-0 z-30 shadow-2xl justify-between">
         <div className="flex flex-col items-center gap-4 w-full mt-4">
           <div onClick={onBack} className="p-2 bg-amber-500 rounded-lg mb-2 cursor-pointer hover:bg-amber-400 transition-colors" title="Sair"><Store size={20} className="text-slate-900" /></div>
-          {[{v:'pos',i:ShoppingCart},{v:'tabs',i:ClipboardList},{v:'kitchen',i:ChefHat},{v:'orders',i:Cake},{v:'history',i:History},{v:'cash',i:Coins},{v:'admin',i:LayoutDashboard},{v:'settings',i:Settings}].map(nav => {
+          {/* ✅ FIX 1: Adicionado 'cashflow' com ícone TrendingUp na barra lateral */}
+          {[
+            {v:'pos',      i:ShoppingCart},
+            {v:'tabs',     i:ClipboardList},
+            {v:'kitchen',  i:ChefHat},
+            {v:'orders',   i:Cake},
+            {v:'history',  i:History},
+            {v:'cashflow', i:TrendingUp},
+            {v:'cash',     i:Coins},
+            {v:'admin',    i:LayoutDashboard},
+            {v:'settings', i:Settings}
+          ].map(nav => {
             const Icon = nav.i;
             return (
-              <button key={nav.v} onClick={() => { if(nav.v==='settings' && !isSettingsUnlocked) setShowSettingsPasswordModal(true); else setView(nav.v); }} className={`p-2 rounded-xl relative transition-all ${view === nav.v ? 'bg-indigo-600 shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+              <button
+                key={nav.v}
+                onClick={() => {
+                  if (nav.v === 'settings' && !isSettingsUnlocked) {
+                    setShowSettingsPasswordModal(true);
+                  } else {
+                    setView(nav.v);
+                  }
+                }}
+                className={`p-2 rounded-xl relative transition-all ${view === nav.v ? 'bg-indigo-600 shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                title={nav.v}
+              >
                 <Icon size={20} />
-                {nav.v==='tabs' && orders.some(o=>o.paymentStatus==='ABERTO') && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full"></span>}
-                {nav.v==='kitchen' && orders.some(o=>o.kitchenStatus==='Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)) && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full animate-pulse"></span>}
+                {nav.v === 'tabs' && orders.some(o => o.paymentStatus === 'ABERTO') && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full"></span>
+                )}
+                {nav.v === 'kitchen' && orders.some(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)) && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full animate-pulse"></span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="flex-1 w-full relative pl-16">
-        
+      {/* Conteúdo principal com margem para a sidebar fixa */}
+      <div className="flex-1 min-w-0 ml-16 relative">
+
         {/* Modais Globais POS */}
         {showSettingsPasswordModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><h3 className="text-xl font-bold mb-4 text-center">Acesso Configurações</h3><input type="password" autoFocus placeholder="Senha" className="w-full border p-3 rounded-xl mb-4 text-center" value={settingsPasswordInput} onChange={e=>setSettingsPasswordInput(e.target.value)} onKeyDown={e=>e.key==='Enter' && (settingsPasswordInput===(settings?.settingsPassword||'1234')?(setIsSettingsUnlocked(true),setShowSettingsPasswordModal(false),setView('settings')):(showToastMsg("Senha incorreta","error"),setSettingsPasswordInput('')))} /><div className="flex gap-2"><button onClick={()=>setShowSettingsPasswordModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={()=>settingsPasswordInput===(settings?.settingsPassword||'1234')?(setIsSettingsUnlocked(true),setShowSettingsPasswordModal(false),setView('settings')):(showToastMsg("Senha incorreta","error"),setSettingsPasswordInput(''))} className="flex-1 bg-gray-800 text-white py-3 rounded-xl font-bold">Acessar</button></div></div></div>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <h3 className="text-xl font-bold mb-4 text-center">Acesso Configurações</h3>
+              <input type="password" autoFocus placeholder="Senha" className="w-full border p-3 rounded-xl mb-4 text-center" value={settingsPasswordInput} onChange={e => setSettingsPasswordInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (settingsPasswordInput === (settings?.settingsPassword || '1234')) {
+                      setIsSettingsUnlocked(true); setShowSettingsPasswordModal(false); setView('settings');
+                    } else { showToastMsg("Senha incorreta", "error"); setSettingsPasswordInput(''); }
+                  }
+                }}
+              />
+              <div className="flex gap-2">
+                <button onClick={() => setShowSettingsPasswordModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button>
+                <button onClick={() => {
+                  if (settingsPasswordInput === (settings?.settingsPassword || '1234')) {
+                    setIsSettingsUnlocked(true); setShowSettingsPasswordModal(false); setView('settings');
+                  } else { showToastMsg("Senha incorreta", "error"); setSettingsPasswordInput(''); }
+                }} className="flex-1 bg-gray-800 text-white py-3 rounded-xl font-bold">Acessar</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {actionAuthModal.show && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertOctagon size={48} /></div><h3 className="text-xl font-bold mb-2 text-center">{actionAuthModal.action === 'cancel' ? 'Cancelar Pedido' : 'Editar Pedido'}</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação requer autorização de gerente.</p><input type="password" autoFocus placeholder="Senha do Caixa" className="w-full border p-3 text-center mb-4 rounded-xl" value={actionPassword} onChange={e=>setActionPassword(e.target.value)} onKeyDown={e=>e.key==='Enter' && confirmActionAuth()} /><div className="flex gap-2"><button onClick={()=>{setActionAuthModal({show:false,action:null,order:null});setActionPassword('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={confirmActionAuth} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <div className="flex justify-center mb-4 text-red-500"><AlertOctagon size={48} /></div>
+              <h3 className="text-xl font-bold mb-2 text-center">{actionAuthModal.action === 'cancel' ? 'Cancelar Pedido' : 'Editar Pedido'}</h3>
+              <p className="text-sm text-slate-500 mb-4 text-center">Esta ação requer autorização de gerente.</p>
+              <input type="password" autoFocus placeholder="Senha do Caixa" className="w-full border p-3 text-center mb-4 rounded-xl" value={actionPassword} onChange={e => setActionPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && confirmActionAuth()} />
+              <div className="flex gap-2">
+                <button onClick={() => { setActionAuthModal({ show: false, action: null, order: null }); setActionPassword(''); }} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button>
+                <button onClick={confirmActionAuth} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {showDeleteAuthModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertTriangle size={48}/></div><h3 className="text-xl font-bold mb-2 text-center">Apagar Vendas</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação apagará permanentemente todos os pedidos finalizados. Necessita senha de Configurações.</p><input type="password" autoFocus placeholder="Senha de Configuração" className="w-full border p-3 text-center mb-4 rounded-xl" value={deletePasswordInput} onChange={e=>setDeletePasswordInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&confirmClearHistory()} /><div className="flex gap-2"><button onClick={()=>{setShowDeleteAuthModal(false);setDeletePasswordInput('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={confirmClearHistory} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <div className="flex justify-center mb-4 text-red-500"><AlertTriangle size={48}/></div>
+              <h3 className="text-xl font-bold mb-2 text-center">Apagar Vendas</h3>
+              <p className="text-sm text-slate-500 mb-4 text-center">Esta ação apagará permanentemente todos os pedidos finalizados.</p>
+              <input type="password" autoFocus placeholder="Senha de Configuração" className="w-full border p-3 text-center mb-4 rounded-xl" value={deletePasswordInput} onChange={e => setDeletePasswordInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && confirmClearHistory()} />
+              <div className="flex gap-2">
+                <button onClick={() => { setShowDeleteAuthModal(false); setDeletePasswordInput(''); }} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button>
+                <button onClick={confirmClearHistory} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {finalizedOrder && (
-          <div className="fixed inset-0 bg-slate-900/80 z-[150] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center"><div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={48} className="text-green-600"/></div><h2 className="text-2xl font-black mb-2">Venda Finalizada!</h2><div className="space-y-3 mt-8"><button onClick={() => handlePrint(finalizedOrder, settings, 'customer')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2"><Printer size={20}/> Imprimir Recibo</button><button onClick={() => setFinalizedOrder(null)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold">Voltar ao Início</button></div></div></div>
+          <div className="fixed inset-0 bg-slate-900/80 z-[150] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center">
+              <div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={48} className="text-green-600"/></div>
+              <h2 className="text-2xl font-black mb-2">Venda Finalizada!</h2>
+              <div className="space-y-3 mt-8">
+                <button onClick={() => handlePrint(finalizedOrder, settings, 'customer')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2"><Printer size={20}/> Imprimir Recibo</button>
+                <button onClick={() => setFinalizedOrder(null)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold">Voltar ao Início</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* VIEWS */}
@@ -1895,49 +1977,240 @@ const PosView = ({ user, onBack, initialSettings }) => {
           <div className="flex h-screen">
             <div className="flex-1 p-6 overflow-y-auto bg-slate-50">
               <h1 className="text-2xl font-bold mb-6">Novo Pedido (Balcão)</h1>
-              <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl"><div className="flex gap-2 mb-3"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18} /><input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none" /></div></div><div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">{categories.map(c => <button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory===c?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{c}</button>)}</div></div>
-              <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar"><Users size={18} className="text-slate-400 mr-1 shrink-0" />{guestList.map(g => (<div key={g} className={`flex items-center rounded-full border shrink-0 ${currentGuest===g?'bg-indigo-600 text-white':'bg-slate-50 text-slate-600'}`}><button onClick={()=>setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold">{g}</button>{currentGuest===g && <button onClick={()=>setRenameModal({show:true,oldName:g,newName:g})} className="pr-3 pl-1 py-1.5"><Edit3 size={12}/></button>}</div>))}<button onClick={()=>{const nG=`Pessoa ${guestList.length+1}`;setGuestList([...guestList,nG]);setCurrentGuest(nG);}} className="px-4 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-slate-400 flex items-center gap-1 shrink-0"><Plus size={12}/> Add Pessoa</button></div>
+              <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl">
+                <div className="flex gap-2 mb-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                    <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none" />
+                  </div>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                  {categories.map(c => <button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory === c ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>{c}</button>)}
+                </div>
+              </div>
+              <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar">
+                <Users size={18} className="text-slate-400 mr-1 shrink-0" />
+                {guestList.map(g => (
+                  <div key={g} className={`flex items-center rounded-full border shrink-0 ${currentGuest === g ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'}`}>
+                    <button onClick={() => setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold">{g}</button>
+                    {currentGuest === g && <button onClick={() => setRenameModal({ show: true, oldName: g, newName: g })} className="pr-3 pl-1 py-1.5"><Edit3 size={12}/></button>}
+                  </div>
+                ))}
+                <button onClick={() => { const nG = `Pessoa ${guestList.length + 1}`; setGuestList([...guestList, nG]); setCurrentGuest(nG); }} className="px-4 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-slate-400 flex items-center gap-1 shrink-0"><Plus size={12}/> Add Pessoa</button>
+              </div>
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-24">
                 {filtered.map(p => (
-                  <button key={p.id} onClick={()=>addToCart(p)} disabled={p.stock<=0} className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-col text-left active:scale-95 ${p.stock<=0?'opacity-50':''}`}><div className="flex justify-between items-center mb-3 w-full"><div className="bg-blue-50 p-2 rounded-lg"><IconMapper type={p.icon} className="w-5 h-5 text-blue-600" /></div><span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg">{formatMoney(p.price)}</span></div><div className="font-bold text-slate-800 leading-tight mb-1">{p.name}</div><div className="text-xs font-bold text-slate-400">{p.stock} un</div></button>
+                  <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-col text-left active:scale-95 ${p.stock <= 0 ? 'opacity-50' : ''}`}>
+                    <div className="flex justify-between items-center mb-3 w-full">
+                      <div className="bg-blue-50 p-2 rounded-lg"><IconMapper type={p.icon} className="w-5 h-5 text-blue-600" /></div>
+                      <span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg">{formatMoney(p.price)}</span>
+                    </div>
+                    <div className="font-bold text-slate-800 leading-tight mb-1">{p.name}</div>
+                    <div className="text-xs font-bold text-slate-400">{p.stock} un</div>
+                  </button>
                 ))}
               </div>
             </div>
+
+            {/* Carrinho lateral */}
             <div className="w-96 bg-white border-l border-slate-200 shadow-xl flex flex-col z-10">
               <div className="p-5 border-b bg-slate-50">
                 <div className="font-bold text-lg flex gap-2 items-center text-slate-800 mb-4"><ShoppingCart size={22} className="text-blue-600" /> Carrinho</div>
-                <div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Vincular Cliente/Mesa:</label><input placeholder="Nome ou Mesa..." value={customerName} onChange={e=>setCustomerName(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm outline-none font-bold" />{orders.filter(o=>o.paymentStatus==='ABERTO').length>0 && <div className="flex gap-2 overflow-x-auto pb-1 pt-1 hide-scrollbar">{orders.filter(o=>o.paymentStatus==='ABERTO').map(o=><button key={o.id} onClick={()=>setCustomerName(o.client)} className="px-3 py-1.5 rounded-lg text-xs font-bold border whitespace-nowrap bg-white hover:bg-slate-50">{o.client}</button>)}</div>}</div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Vincular Cliente/Mesa:</label>
+                  <input placeholder="Nome ou Mesa..." value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm outline-none font-bold" />
+                  {orders.filter(o => o.paymentStatus === 'ABERTO').length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1 pt-1 hide-scrollbar">
+                      {orders.filter(o => o.paymentStatus === 'ABERTO').map(o => (
+                        <button key={o.id} onClick={() => setCustomerName(o.client)} className="px-3 py-1.5 rounded-lg text-xs font-bold border whitespace-nowrap bg-white hover:bg-slate-50">{o.client}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
                 {guestList.map(g => {
-                  const gI = cart.filter(i=>i.guest===g); if(gI.length===0) return null;
+                  const gI = cart.filter(i => i.guest === g);
+                  if (gI.length === 0) return null;
                   return (
-                    <div key={g} className="border-b-4 border-slate-100 last:border-0 pb-2 mb-4"><div className="bg-slate-50 p-3 font-bold text-sm flex items-center gap-2 border-b rounded-t-xl"><UserCircle2 size={16}/> {g}</div>
+                    <div key={g} className="border-b-4 border-slate-100 last:border-0 pb-2 mb-4">
+                      <div className="bg-slate-50 p-3 font-bold text-sm flex items-center gap-2 border-b rounded-t-xl"><UserCircle2 size={16}/> {g}</div>
                       {gI.map(item => (
-                        <div key={item.cartItemId} className="p-4 border-b last:border-0"><div className="flex justify-between items-start mb-2"><div><div className="font-bold"><span className="text-blue-600 mr-1">{item.qty}x</span>{item.name}</div><div className="text-sm text-slate-500 font-medium">{formatMoney(calcItemTotal(item))}</div></div><div className="flex gap-2"><button onClick={()=>removeFromCart(item.cartItemId)} className="w-7 h-7 bg-red-50 text-red-500 rounded font-bold">-</button><button onClick={()=>incrementQty(item.cartItemId)} className="w-7 h-7 bg-green-50 text-green-600 rounded font-bold">+</button></div></div>
-                          {item.subItems?.length>0 && <div className="pl-3 mt-2 mb-3 border-l-2 border-indigo-200 space-y-2">{item.subItems.map(sub=><div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm"><span className="font-bold text-xs text-slate-600">+ {sub.qty*item.qty}x {sub.name}</span><div className="flex items-center gap-3"><span className="text-xs font-medium">{formatMoney(sub.price*sub.qty*item.qty)}</span><button onClick={()=>unlinkItem(item.cartItemId, sub.id)} className="text-red-400 p-1"><Trash2 size={14}/></button></div></div>)}</div>}
-                          <input placeholder="Obs..." value={item.obs||''} onChange={e=>setCart(cart.map(x=>x.cartItemId===item.cartItemId?{...x,obs:e.target.value}:x))} className="w-full text-xs bg-slate-50 border p-2.5 rounded-lg outline-none mt-2" />
+                        <div key={item.cartItemId} className="p-4 border-b last:border-0">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="font-bold"><span className="text-blue-600 mr-1">{item.qty}x</span>{item.name}</div>
+                              <div className="text-sm text-slate-500 font-medium">{formatMoney(calcItemTotal(item))}</div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => removeFromCart(item.cartItemId)} className="w-7 h-7 bg-red-50 text-red-500 rounded font-bold">-</button>
+                              <button onClick={() => incrementQty(item.cartItemId)} className="w-7 h-7 bg-green-50 text-green-600 rounded font-bold">+</button>
+                            </div>
+                          </div>
+                          {item.subItems?.length > 0 && (
+                            <div className="pl-3 mt-2 mb-3 border-l-2 border-indigo-200 space-y-2">
+                              {item.subItems.map(sub => (
+                                <div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm">
+                                  <span className="font-bold text-xs text-slate-600">+ {sub.qty * item.qty}x {sub.name}</span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs font-medium">{formatMoney(sub.price * sub.qty * item.qty)}</span>
+                                    <button onClick={() => unlinkItem(item.cartItemId, sub.id)} className="text-red-400 p-1"><Trash2 size={14}/></button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <input placeholder="Obs..." value={item.obs || ''} onChange={e => setCart(cart.map(x => x.cartItemId === item.cartItemId ? { ...x, obs: e.target.value } : x))} className="w-full text-xs bg-slate-50 border p-2.5 rounded-lg outline-none mt-2" />
                         </div>
                       ))}
                     </div>
                   );
                 })}
               </div>
-              <div className="p-5 border-t bg-slate-50"><div className="flex justify-between mb-4 items-center"><span className="font-bold uppercase text-sm">Total</span><span className="text-3xl font-black text-blue-600">{formatMoney(cartTotal)}</span></div><div className="flex flex-col gap-3">{customerName && <button onClick={()=>finalizeOrder(customerName, 'ABERTO')} disabled={cart.length===0} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex justify-center gap-2 disabled:opacity-50"><ListPlus size={18}/> Lançar Comanda</button>}<button onClick={()=>{if(cart.length>0){setSelectedTabToSettle(null);setPartialPayments([]);setPaymentInputValue('');setPayingGuest('Mesa Completa');setShowPaymentModal(true);}}} disabled={cart.length===0} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50">COBRAR AGORA</button></div></div>
+              <div className="p-5 border-t bg-slate-50">
+                <div className="flex justify-between mb-4 items-center">
+                  <span className="font-bold uppercase text-sm">Total</span>
+                  <span className="text-3xl font-black text-blue-600">{formatMoney(cartTotal)}</span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {customerName && (
+                    <button onClick={() => finalizeOrder(customerName, 'ABERTO')} disabled={cart.length === 0} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex justify-center gap-2 disabled:opacity-50"><ListPlus size={18}/> Lançar Comanda</button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (cart.length > 0) {
+                        setSelectedTabToSettle(null);
+                        setPartialPayments([]);
+                        setPaymentInputValue('');
+                        setPayingGuest('Mesa Completa');
+                        setShowPaymentModal(true);
+                      }
+                    }}
+                    disabled={cart.length === 0}
+                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50"
+                  >
+                    COBRAR AGORA
+                  </button>
+                </div>
+              </div>
             </div>
-            
+
+            {/* ✅ FIX 2: Modal de pagamento com z-index alto e fixed para não ser cortado */}
             {showPaymentModal && (
-              <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4"><div className="bg-white w-full max-w-md rounded-3xl overflow-hidden"><div className="p-6 bg-slate-900 text-white flex justify-between"><h3 className="font-bold text-xl">Finalizar Venda</h3><button onClick={()=>setShowPaymentModal(false)}><X/></button></div><div className="p-6 space-y-4">
-                {uniqueGuestsInTab.length > 1 && <div className="bg-slate-50 p-4 rounded-2xl"><div className="flex gap-2 overflow-x-auto"><button onClick={()=>{setPayingGuest('Mesa Completa');setPartialPayments([]);setPaymentInputValue('');}} className={`px-5 py-2.5 rounded-xl text-sm font-bold border shrink-0 ${payingGuest==='Mesa Completa'?'bg-blue-600 text-white':'bg-white text-slate-600'}`}>Tudo</button>{uniqueGuestsInTab.map(g=><button key={g} onClick={()=>{setPayingGuest(g);setPartialPayments([]);setPaymentInputValue('');}} className={`px-5 py-2.5 rounded-xl text-sm font-bold border shrink-0 ${payingGuest===g?'bg-blue-600 text-white':'bg-white text-slate-600'}`}>{g}</button>)}</div></div>}
-                <div className="bg-white p-4 rounded-2xl border shadow-sm max-h-48 overflow-y-auto"><div className="space-y-3">{itemsToPayLive.map(i=><div key={i.cartItemId||Math.random()} className="flex justify-between text-sm border-b pb-2"><div className="flex gap-2"><span className="font-black text-blue-600">{i.qty}x</span><span className="font-bold">{i.name}{i.subItems?.map(s=><span key={s.id} className="block text-xs font-medium text-slate-500">+ {s.qty*i.qty}x {s.name}</span>)}</span></div><span className="font-black">{formatMoney(calcItemTotal(i))}</span></div>)}</div></div>
-                <div className="bg-slate-100 p-5 rounded-2xl flex justify-between"><span className="font-bold">A Receber</span><span className="text-3xl font-black text-blue-600">{formatMoney(modalTotal)}</span></div>
-                <div><input type="number" step="0.01" value={paymentInputValue} onChange={e=>setPaymentInputValue(e.target.value)} className="w-full p-4 border rounded-2xl text-xl font-black outline-none" placeholder="Valor Dinheiro R$" />{liveChange>0 && <div className="bg-emerald-50 p-4 rounded-2xl mt-3 flex justify-between"><span className="font-bold text-emerald-700">TROCO:</span><span className="text-2xl font-black text-emerald-800">{formatMoney(liveChange)}</span></div>}</div>
-                <div className="grid grid-cols-2 gap-3">{['Dinheiro', 'Pix', 'Crédito', 'Débito'].map(m=><button key={m} onClick={()=>{const r=parseFloat((paymentInputValue||'').replace(',','.'))||modalRemaining; const v=Math.min(r,modalRemaining); const up=[...partialPayments,{method:m,value:v,receivedValue:m==='Dinheiro'?r:v,changeValue:m==='Dinheiro'?Math.max(0,r-modalRemaining):0}]; setPartialPayments(up); setPaymentInputValue(''); if(up.reduce((a,p)=>a+p.value,0)>=modalTotal-0.01) finalizeOrder(customerName||'Balcão','PAGO',up); }} className="py-4 border rounded-xl font-bold hover:bg-slate-50">{m}</button>)}</div>
-                {!selectedTabToSettle && partialPayments.length===0 && <div className="pt-6 border-t mt-2"><div className="grid grid-cols-5 gap-2 mb-4">{MESAS.map(m=><button key={m} onClick={()=>finalizeOrder(m,'ABERTO')} className={`py-2 text-xs font-bold rounded-lg border ${orders.some(o=>o.client===m&&o.paymentStatus==='ABERTO')?'bg-indigo-50 text-indigo-700':'bg-white hover:bg-slate-50'}`}>{m.replace('Mesa ','')}</button>)}</div><div className="flex gap-3"><input placeholder="Nome Cliente" value={customerName} onChange={e=>setCustomerName(e.target.value)} className="flex-1 border p-3 rounded-xl text-sm outline-none font-bold" /><button onClick={()=>finalizeOrder(customerName,'ABERTO')} disabled={!customerName} className="bg-orange-500 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50">Abrir Conta</button></div></div>}
-              </div></div></div>
+              <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4">
+                <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden max-h-[90vh] flex flex-col">
+                  <div className="p-6 bg-slate-900 text-white flex justify-between shrink-0">
+                    <h3 className="font-bold text-xl">Finalizar Venda</h3>
+                    <button onClick={() => setShowPaymentModal(false)}><X/></button>
+                  </div>
+                  <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                    {uniqueGuestsInTab.length > 1 && (
+                      <div className="bg-slate-50 p-4 rounded-2xl">
+                        <div className="flex gap-2 overflow-x-auto">
+                          <button onClick={() => { setPayingGuest('Mesa Completa'); setPartialPayments([]); setPaymentInputValue(''); }} className={`px-5 py-2.5 rounded-xl text-sm font-bold border shrink-0 ${payingGuest === 'Mesa Completa' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>Tudo</button>
+                          {uniqueGuestsInTab.map(g => (
+                            <button key={g} onClick={() => { setPayingGuest(g); setPartialPayments([]); setPaymentInputValue(''); }} className={`px-5 py-2.5 rounded-xl text-sm font-bold border shrink-0 ${payingGuest === g ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`}>{g}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="bg-white p-4 rounded-2xl border shadow-sm max-h-48 overflow-y-auto">
+                      <div className="space-y-3">
+                        {itemsToPayLive.map(i => (
+                          <div key={i.cartItemId || Math.random()} className="flex justify-between text-sm border-b pb-2">
+                            <div className="flex gap-2">
+                              <span className="font-black text-blue-600">{i.qty}x</span>
+                              <span className="font-bold">{i.name}
+                                {i.subItems?.map(s => <span key={s.id} className="block text-xs font-medium text-slate-500">+ {s.qty * i.qty}x {s.name}</span>)}
+                              </span>
+                            </div>
+                            <span className="font-black">{formatMoney(calcItemTotal(i))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-slate-100 p-5 rounded-2xl flex justify-between">
+                      <span className="font-bold">A Receber</span>
+                      <span className="text-3xl font-black text-blue-600">{formatMoney(modalTotal)}</span>
+                    </div>
+                    <div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={paymentInputValue}
+                        onChange={e => setPaymentInputValue(e.target.value)}
+                        className="w-full p-4 border rounded-2xl text-xl font-black outline-none"
+                        placeholder="Valor Dinheiro R$"
+                      />
+                      {liveChange > 0 && (
+                        <div className="bg-emerald-50 p-4 rounded-2xl mt-3 flex justify-between">
+                          <span className="font-bold text-emerald-700">TROCO:</span>
+                          <span className="text-2xl font-black text-emerald-800">{formatMoney(liveChange)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {['Dinheiro', 'Pix', 'Crédito', 'Débito'].map(m => (
+                        <button key={m} onClick={() => {
+                          const r = parseFloat((paymentInputValue || '').replace(',', '.')) || modalRemaining;
+                          const v = Math.min(r, modalRemaining);
+                          const up = [...partialPayments, { method: m, value: v, receivedValue: m === 'Dinheiro' ? r : v, changeValue: m === 'Dinheiro' ? Math.max(0, r - modalRemaining) : 0 }];
+                          setPartialPayments(up);
+                          setPaymentInputValue('');
+                          if (up.reduce((a, p) => a + p.value, 0) >= modalTotal - 0.01) finalizeOrder(customerName || 'Balcão', 'PAGO', up);
+                        }} className="py-4 border rounded-xl font-bold hover:bg-slate-50">{m}</button>
+                      ))}
+                    </div>
+                    {!selectedTabToSettle && partialPayments.length === 0 && (
+                      <div className="pt-6 border-t mt-2">
+                        <div className="grid grid-cols-5 gap-2 mb-4">
+                          {MESAS.map(m => (
+                            <button key={m} onClick={() => finalizeOrder(m, 'ABERTO')} className={`py-2 text-xs font-bold rounded-lg border ${orders.some(o => o.client === m && o.paymentStatus === 'ABERTO') ? 'bg-indigo-50 text-indigo-700' : 'bg-white hover:bg-slate-50'}`}>{m.replace('Mesa ', '')}</button>
+                          ))}
+                        </div>
+                        <div className="flex gap-3">
+                          <input placeholder="Nome Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="flex-1 border p-3 rounded-xl text-sm outline-none font-bold" />
+                          <button onClick={() => finalizeOrder(customerName, 'ABERTO')} disabled={!customerName} className="bg-orange-500 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50">Abrir Conta</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
 
-            {renameModal.show && <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-6 w-full max-w-sm"><input autoFocus value={renameModal.newName} onChange={e=>setRenameModal({...renameModal,newName:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}}} className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome" /><div className="flex gap-2"><button onClick={()=>setRenameModal({show:false,oldName:'',newName:''})} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button><button onClick={()=>{const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button></div></div></div>}
+            {renameModal.show && (
+              <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
+                  <input autoFocus value={renameModal.newName} onChange={e => setRenameModal({ ...renameModal, newName: e.target.value })}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const fn = renameModal.newName.trim() || renameModal.oldName;
+                        if (fn !== renameModal.oldName && !guestList.includes(fn)) {
+                          setGuestList(guestList.map(g => g === renameModal.oldName ? fn : g));
+                          if (currentGuest === renameModal.oldName) setCurrentGuest(fn);
+                          setCart(cart.map(i => i.guest === renameModal.oldName ? { ...i, guest: fn } : i));
+                        }
+                        setRenameModal({ show: false, oldName: '', newName: '' });
+                      }
+                    }}
+                    className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={() => setRenameModal({ show: false, oldName: '', newName: '' })} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button>
+                    <button onClick={() => {
+                      const fn = renameModal.newName.trim() || renameModal.oldName;
+                      if (fn !== renameModal.oldName && !guestList.includes(fn)) {
+                        setGuestList(guestList.map(g => g === renameModal.oldName ? fn : g));
+                        if (currentGuest === renameModal.oldName) setCurrentGuest(fn);
+                        setCart(cart.map(i => i.guest === renameModal.oldName ? { ...i, guest: fn } : i));
+                      }
+                      setRenameModal({ show: false, oldName: '', newName: '' });
+                    }} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1947,7 +2220,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {orders.filter(o => o.paymentStatus === 'ABERTO').map(o => (
                 <div key={o.id} className="bg-white p-5 rounded-2xl shadow-sm border border-indigo-100 relative overflow-hidden group hover:shadow-md transition-shadow">
-                  {o.origin === 'Mobile' || o.origin === 'WhatsApp' ? <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold shadow-sm">App/Site</div> : null}
+                  {(o.origin === 'Mobile' || o.origin === 'WhatsApp') && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold shadow-sm">App/Site</div>}
                   <div className="font-bold text-xl text-indigo-900 mb-1">{o.client}</div>
                   <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block font-bold mb-3">Origem: {o.waiter || 'Balcão'}</div>
                   <div className="bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
@@ -1962,7 +2235,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 </div>
               ))}
               {orders.filter(o => o.paymentStatus === 'ABERTO').length === 0 && (
-                <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhuma comanda aberta no momento. O salão está tranquilo.</div>
+                <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhuma comanda aberta no momento.</div>
               )}
             </div>
           </div>
@@ -1975,52 +2248,47 @@ const PosView = ({ user, onBack, initialSettings }) => {
               {orders.filter(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)).map(o => {
                 const pendingItems = o.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || [];
                 return (
-                <div key={o.firestoreId} className="bg-white border-l-4 border-orange-500 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <span className="font-bold text-lg text-slate-800 block leading-tight">{o.client}</span>
-                      <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded">Pedido #{String(o.id).slice(0, 4)}</span>
+                  <div key={o.firestoreId} className="bg-white border-l-4 border-orange-500 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <span className="font-bold text-lg text-slate-800 block leading-tight">{o.client}</span>
+                        <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded">Pedido #{String(o.id).slice(0, 4)}</span>
+                      </div>
+                      <span className="text-sm font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded"><Clock size={14}/> {o.time}</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded"><Clock size={14}/> {o.time}</span>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-100 min-h-[100px]">
-                    <ul className="text-sm space-y-2">
-                      {pendingItems.map((i, idx) => (
-                        <li key={idx} className="flex flex-col gap-1 border-b border-slate-200 last:border-0 pb-3 last:pb-0">
-                          <div className="flex gap-2 items-start">
-                            <span className="font-black text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded text-xs">{i.qty}x</span> 
-                            <span className="font-bold text-slate-700">{i.name} {i.guest && !o.client?.includes(i.guest) && <span className="text-xs font-normal text-slate-500">({i.guest})</span>}</span>
-                          </div>
-                          
-                          {i.subItems && i.subItems.length > 0 && (
-                            <div className="pl-7 space-y-1">
-                              {i.subItems.map((sub, sIdx) => (
-                                <div key={sIdx} className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded inline-block">
-                                  + {sub.qty * i.qty}x {sub.name}
-                                </div>
-                              ))}
+                    <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-100 min-h-[100px]">
+                      <ul className="text-sm space-y-2">
+                        {pendingItems.map((i, idx) => (
+                          <li key={idx} className="flex flex-col gap-1 border-b border-slate-200 last:border-0 pb-3 last:pb-0">
+                            <div className="flex gap-2 items-start">
+                              <span className="font-black text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded text-xs">{i.qty}x</span>
+                              <span className="font-bold text-slate-700">{i.name} {i.guest && !o.client?.includes(i.guest) && <span className="text-xs font-normal text-slate-500">({i.guest})</span>}</span>
                             </div>
-                          )}
-                          
-                          {i.obs && (
-                            <div className="ml-7 mt-1 text-xs font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1 rounded inline-block">
-                              OBS: {i.obs}
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                            {i.subItems && i.subItems.length > 0 && (
+                              <div className="pl-7 space-y-1">
+                                {i.subItems.map((sub, sIdx) => (
+                                  <div key={sIdx} className="text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded inline-block">
+                                    + {sub.qty * i.qty}x {sub.name}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {i.obs && <div className="ml-7 mt-1 text-xs font-bold text-red-500 bg-red-50 border border-red-100 px-2 py-1 rounded inline-block">OBS: {i.obs}</div>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setKitchenExpandedOrder(o)} className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold shadow-sm transition-colors hover:bg-slate-50 flex items-center justify-center gap-2"><Maximize size={18}/> Ampliar</button>
+                      <button onClick={() => {
+                        const updatedItems = (o.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                        updateDoc(getDocRef('orders', o.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
+                        showToastMsg(`Pedido #${String(o.id).slice(0, 4)} finalizado na cozinha.`);
+                      }} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 transition-colors active:scale-95 flex items-center justify-center gap-2"><CheckSquare size={18}/> Pronto</button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setKitchenExpandedOrder(o)} className="flex-1 bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold shadow-sm transition-colors hover:bg-slate-50 flex items-center justify-center gap-2"><Maximize size={18}/> Ampliar</button>
-                    <button onClick={() => {
-                       const updatedItems = (o.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
-                       updateDoc(getDocRef('orders', o.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
-                       showToastMsg(`Pedido #${String(o.id).slice(0,4)} finalizado na cozinha.`);
-                    }} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 transition-colors active:scale-95 flex items-center justify-center gap-2"><CheckSquare size={18}/> Pronto</button>
-                  </div>
-                </div>
-              )})}
+                );
+              })}
               {orders.filter(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)).length === 0 && (
                 <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhum pedido pendente na cozinha.</div>
               )}
@@ -2028,7 +2296,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL COZINHA AMPLIADA */}
         {kitchenExpandedOrder && (
           <div className="fixed inset-0 bg-slate-900 z-[150] flex flex-col animate-in fade-in zoom-in-95">
             <div className="p-6 bg-slate-800 text-white flex justify-between items-center shadow-lg">
@@ -2049,7 +2316,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       <span className="text-5xl font-black text-orange-600 bg-orange-100 px-5 py-3 rounded-2xl min-w-[100px] text-center">{item.qty}x</span>
                       <span className="text-5xl font-bold text-slate-800 leading-tight mt-1">{item.name} <span className="text-3xl font-medium text-slate-400 ml-2">({item.guest || 'Pessoa 1'})</span></span>
                     </div>
-                    
                     {item.subItems && item.subItems.length > 0 && (
                       <div className="mt-5 pl-[120px] flex flex-wrap gap-3">
                         {item.subItems.map((sub, sIdx) => (
@@ -2059,12 +2325,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
                         ))}
                       </div>
                     )}
-                    
                     {item.obs && (
                       <div className="mt-6 pl-[120px]">
-                        <div className="text-3xl font-black text-red-600 bg-red-50 p-5 rounded-2xl border-4 border-red-200">
-                          OBS: {item.obs}
-                        </div>
+                        <div className="text-3xl font-black text-red-600 bg-red-50 p-5 rounded-2xl border-4 border-red-200">OBS: {item.obs}</div>
                       </div>
                     )}
                   </div>
@@ -2076,7 +2339,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <button onClick={() => {
                 const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
                 updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
-                showToastMsg(`Pedido #${String(kitchenExpandedOrder.id).slice(0,4)} finalizado na cozinha.`);
+                showToastMsg(`Pedido #${String(kitchenExpandedOrder.id).slice(0, 4)} finalizado na cozinha.`);
                 setKitchenExpandedOrder(null);
               }} className="flex-[2] py-8 text-3xl font-black bg-orange-500 text-white hover:bg-orange-600 rounded-3xl shadow-xl shadow-orange-500/30 transition-all active:scale-95 flex items-center justify-center gap-3">
                 <CheckSquare size={40}/> Marcar como Pronto
@@ -2091,35 +2354,22 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><History size={32} className="text-cyan-600" /> Histórico de Vendas</h1>
               <button onClick={triggerClearHistory} className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-colors border border-red-200 shadow-sm active:scale-95"><Trash2 size={18}/> Limpar Histórico</button>
             </div>
-            
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 items-center">
               <div className="flex items-center gap-2 flex-1 w-full relative">
                 <Search className="absolute left-3 top-3 text-slate-400" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Buscar por cliente ou mesa..." 
-                  value={historySearch}
-                  onChange={e => setHistorySearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-cyan-500 font-medium text-slate-700"
-                />
+                <input type="text" placeholder="Buscar por cliente ou mesa..." value={historySearch} onChange={e => setHistorySearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-cyan-500 font-medium text-slate-700" />
               </div>
               <div className="flex items-center gap-2 w-full md:w-auto">
                 <label className="text-sm font-bold text-slate-500 whitespace-nowrap">Data:</label>
-                <input 
-                  type="date" 
-                  value={historyDate} 
-                  onChange={e => setHistoryDate(e.target.value)} 
-                  className="p-2.5 bg-slate-100 border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-cyan-500 font-bold text-slate-700 cursor-pointer w-full md:w-auto"
-                />
+                <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-2.5 bg-slate-100 border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-cyan-500 font-bold text-slate-700 cursor-pointer w-full md:w-auto" />
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {historyOrders.map(o => (
                 <div key={o.firestoreId} onClick={() => setSelectedHistoryOrder(o)} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-cyan-300 transition-all group flex flex-col">
                   <div className="flex justify-between items-start mb-3">
                     <div className="font-bold text-lg text-slate-800 truncate pr-2 group-hover:text-cyan-700 transition-colors">{o.client}</div>
-                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded shrink-0">{new Date(o.paidAt || o.date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</span>
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded shrink-0">{new Date(o.paidAt || o.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div className="flex-1"></div>
                   <div className="flex justify-between items-end mt-4">
@@ -2136,7 +2386,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="col-span-full p-12 text-center bg-white border border-dashed border-slate-300 rounded-3xl text-slate-500">
                   <History size={48} className="mx-auto text-slate-300 mb-4 opacity-50" />
                   <p className="font-bold text-lg">Nenhuma venda encontrada para esta data.</p>
-                  <p className="text-sm mt-1">Verifique os filtros acima ou tente outra data.</p>
                 </div>
               )}
             </div>
@@ -2153,7 +2402,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 </div>
                 <button onClick={() => setSelectedHistoryOrder(null)} className="hover:bg-slate-800 p-2 rounded-full transition-colors"><X size={20} /></button>
               </div>
-              
               <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
                   <div className="p-4 bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">Itens Consumidos</div>
@@ -2181,12 +2429,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     ))}
                   </div>
                 </div>
-                
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="font-bold text-slate-500">Subtotal</span>
-                    <span className="font-bold text-slate-700">{formatMoney(selectedHistoryOrder.total)}</span>
-                  </div>
                   <div className="flex justify-between items-center text-sm pb-3 border-b border-slate-100">
                     <span className="font-bold text-slate-500">Forma de Pagamento</span>
                     <span className="font-bold text-slate-700">{selectedHistoryOrder.method}</span>
@@ -2197,7 +2440,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   </div>
                 </div>
               </div>
-              
               <div className="p-6 bg-white border-t border-slate-200 shrink-0">
                 <button onClick={() => handlePrint(selectedHistoryOrder, settings, 'customer')} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-cyan-600/20 transition-all active:scale-95 flex items-center justify-center gap-2">
                   <Printer size={20}/> Imprimir Recibo
@@ -2207,25 +2449,32 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
+        {/* ✅ FIX 1: View 'cashflow' renderizando o componente CashControl */}
+        {view === 'cashflow' && (
+          <div className="h-screen overflow-y-auto">
+            <CashControl user={user} orders={orders} />
+          </div>
+        )}
+
         {view === 'admin' && (
           <div className="p-8 h-screen overflow-y-auto bg-slate-50">
             <header className="mb-8 flex justify-between items-center">
               <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3"><LayoutDashboard size={32} className="text-purple-600" /> Dashboard & Gestão</h1>
               <div className="flex gap-3">
-                <button onClick={()=>setShowCashMovementModal(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2"><ArrowRightLeft size={18} /> Movimentação</button>
+                <button onClick={() => setShowCashMovementModal(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2"><ArrowRightLeft size={18} /> Movimentação</button>
                 <div className="flex bg-white p-1.5 rounded-xl border">
-                  {['daily','weekly','monthly'].map(m=><button key={m} onClick={()=>setReportMode(m)} className={`px-4 py-2 rounded-lg text-sm font-bold ${reportMode===m?'bg-blue-100 text-blue-700':'text-slate-500'}`}>{m==='daily'?'Diário':m==='weekly'?'Semanal':'Mensal'}</button>)}
+                  {['daily', 'weekly', 'monthly'].map(m => <button key={m} onClick={() => setReportMode(m)} className={`px-4 py-2 rounded-lg text-sm font-bold ${reportMode === m ? 'bg-blue-100 text-blue-700' : 'text-slate-500'}`}>{m === 'daily' ? 'Diário' : m === 'weekly' ? 'Semanal' : 'Mensal'}</button>)}
                 </div>
               </div>
             </header>
             
             <div className="mb-8 flex justify-between items-center bg-white p-5 rounded-3xl border">
               <div className="flex items-center gap-4">
-                <button onClick={()=>reportMode==='daily'?changeDate(-1):reportMode==='weekly'?changeWeek(-1):changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronLeft size={24} className="text-slate-600" /></button>
-                <div className="flex items-center gap-3"><Calendar size={24} className="text-blue-600" /><span className="text-xl font-bold text-slate-800 capitalize">{reportMode==='daily'?reportDate.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'}):reportMode==='weekly'?`Semana ${getWeekId(reportDate.toISOString().split('T')[0]).split('-W')[1]} de ${reportDate.getFullYear()}`:reportDate.toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</span></div>
-                <button onClick={()=>reportMode==='daily'?changeDate(1):reportMode==='weekly'?changeWeek(1):changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronRight size={24} className="text-slate-600" /></button>
+                <button onClick={() => reportMode === 'daily' ? changeDate(-1) : reportMode === 'weekly' ? changeWeek(-1) : changeMonth(-1)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronLeft size={24} className="text-slate-600" /></button>
+                <div className="flex items-center gap-3"><Calendar size={24} className="text-blue-600" /><span className="text-xl font-bold text-slate-800 capitalize">{reportMode === 'daily' ? reportDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) : reportMode === 'weekly' ? `Semana ${getWeekId(reportDate.toISOString().split('T')[0]).split('-W')[1]} de ${reportDate.getFullYear()}` : reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span></div>
+                <button onClick={() => reportMode === 'daily' ? changeDate(1) : reportMode === 'weekly' ? changeWeek(1) : changeMonth(1)} className="p-2 hover:bg-slate-100 rounded-full"><ChevronRight size={24} className="text-slate-600" /></button>
               </div>
-              <button onClick={()=>setReportDate(new Date())} className="text-sm font-bold text-blue-600 px-4 py-2 rounded-xl border border-blue-100">Voltar para Hoje</button>
+              <button onClick={() => setReportDate(new Date())} className="text-sm font-bold text-blue-600 px-4 py-2 rounded-xl border border-blue-100">Voltar para Hoje</button>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2237,7 +2486,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <div className="bg-white p-6 rounded-3xl border lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="p-5 bg-blue-50/50 rounded-2xl border"><div className="text-blue-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><DollarSign size={18} /> Faturamento</div><div className="text-4xl font-black text-slate-800">{formatMoney(totalSales)}</div></div>
                 <div className="p-5 bg-purple-50/50 rounded-2xl border"><div className="text-purple-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18} /> Volume</div><div className="text-4xl font-black text-slate-800">{filteredOrders.length}</div></div>
-                <div className="p-5 bg-amber-50/50 rounded-2xl border"><div className="text-amber-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-4xl font-black text-slate-800">{formatMoney(filteredOrders.length>0?totalSales/filteredOrders.length:0)}</div></div>
+                <div className="p-5 bg-amber-50/50 rounded-2xl border"><div className="text-amber-700 text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-4xl font-black text-slate-800">{formatMoney(filteredOrders.length > 0 ? totalSales / filteredOrders.length : 0)}</div></div>
               </div>
               
               <div className="bg-white p-6 rounded-3xl border lg:col-span-2">
@@ -2258,18 +2507,21 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <div className="bg-white p-6 rounded-3xl border lg:col-span-1">
                 <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><TrendingUp size={20} className="text-yellow-500" /> Top 10 Vendidos</h3>
                 <div className="space-y-4 max-h-64 overflow-y-auto">
-                  {Object.entries(filteredOrders.reduce((a,o)=>{o.items?.forEach(i=>{a[i.name]=(a[i.name]||0)+Number(i.qty); i.subItems?.forEach(s=>{a[s.name]=(a[s.name]||0)+(Number(s.qty)*Number(i.qty));});});return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([n,q],i)=>(
-                    <div key={i}><div className="flex justify-between text-sm mb-1.5"><span className="font-bold">{i+1}. {n}</span><span className="font-bold text-blue-600">{q} un</span></div></div>
+                  {Object.entries(filteredOrders.reduce((a, o) => { o.items?.forEach(i => { a[i.name] = (a[i.name] || 0) + Number(i.qty); i.subItems?.forEach(s => { a[s.name] = (a[s.name] || 0) + (Number(s.qty) * Number(i.qty)); }); }); return a; }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([n, q], i) => (
+                    <div key={i}><div className="flex justify-between text-sm mb-1.5"><span className="font-bold">{i + 1}. {n}</span><span className="font-bold text-blue-600">{q} un</span></div></div>
                   ))}
-                  {filteredOrders.length===0 && <div className="text-slate-400 text-sm text-center pt-10">Nenhuma venda.</div>}
+                  {filteredOrders.length === 0 && <div className="text-slate-400 text-sm text-center pt-10">Nenhuma venda.</div>}
                 </div>
               </div>
               
               <div className="bg-white p-6 rounded-3xl border lg:col-span-3">
                 <h3 className="font-bold text-xl text-slate-800 mb-6 flex items-center gap-2"><Plus size={20} className="text-emerald-500" /> Cadastro de Produtos</h3>
                 <div className="space-y-4 mb-8 p-6 bg-slate-50 rounded-2xl border">
-                  <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={newProdName} onChange={e=>setNewProdName(e.target.value)} className="w-full p-3.5 border rounded-xl" /></div>
-                  <div className="grid grid-cols-2 gap-5"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={newProdPrice} onChange={e=>setNewProdPrice(e.target.value)} className="w-full p-3.5 border rounded-xl" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={newProdCat} onChange={e=>setNewProdCat(e.target.value)} className="w-full p-3.5 border rounded-xl bg-white">{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div></div>
+                  <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={newProdName} onChange={e => setNewProdName(e.target.value)} className="w-full p-3.5 border rounded-xl" /></div>
+                  <div className="grid grid-cols-2 gap-5">
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={newProdPrice} onChange={e => setNewProdPrice(e.target.value)} className="w-full p-3.5 border rounded-xl" /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label><select value={newProdCat} onChange={e => setNewProdCat(e.target.value)} className="w-full p-3.5 border rounded-xl bg-white">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                  </div>
                   <button onClick={addNewProduct} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold mt-2">Adicionar Produto</button>
                 </div>
                 <div className="overflow-x-auto rounded-2xl border">
@@ -2278,13 +2530,106 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     <tbody className="text-sm divide-y divide-slate-100">
                       {products.map(p => (
                         <tr key={p.id} className="hover:bg-blue-50/50">
-                          <td className="p-4 font-bold text-slate-800">{p.name}</td><td className="p-4"><span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold">{p.category}</span></td><td className="p-4 font-medium">{formatMoney(p.price)}</td><td className="p-4 text-center"><span className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold">{p.stock} un</span></td>
-                          <td className="p-4 text-right flex justify-end gap-2"><button onClick={()=>setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-xs"><Edit3 size={14} /> Editar</button><button onClick={()=>{setConfirmState({isOpen:true,msg:`Excluir ${p.name}?`,action:async()=>{try{await deleteDoc(getDocRef('products',p.firestoreId));setConfirmState({isOpen:false});showToastMsg('Excluído');}catch(e){}}});}} className="text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-xs"><Trash2 size={14} /> Excluir</button></td>
+                          <td className="p-4 font-bold text-slate-800">{p.name}</td>
+                          <td className="p-4"><span className="px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold">{p.category}</span></td>
+                          <td className="p-4 font-medium">{formatMoney(p.price)}</td>
+                          <td className="p-4 text-center"><span className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold">{p.stock} un</span></td>
+                          <td className="p-4 text-right flex justify-end gap-2">
+                            <button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-xs"><Edit3 size={14} /> Editar</button>
+                            <button onClick={() => { setConfirmState({ isOpen: true, msg: `Excluir ${p.name}?`, action: async () => { try { await deleteDoc(getDocRef('products', p.firestoreId)); setConfirmState({ isOpen: false }); showToastMsg('Excluído'); } catch (e) { } } }); }} className="text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-xs"><Trash2 size={14} /> Excluir</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'settings' && (
+          <div className="p-8 h-screen overflow-y-auto bg-slate-50">
+            <h1 className="text-3xl font-bold mb-8 text-slate-800 flex items-center gap-3"><Settings size={32} className="text-slate-600" /> Configurações</h1>
+            <div className="max-w-2xl space-y-6">
+              <div className="bg-white p-6 rounded-3xl border space-y-4">
+                <h3 className="font-bold text-lg">Dados da Loja</h3>
+                {[
+                  { label: 'Nome da Loja', key: 'storeName' },
+                  { label: 'Telefone / WhatsApp', key: 'phone' },
+                  { label: 'Endereço', key: 'address' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{f.label}</label>
+                    <input value={configForm[f.key] || ''} onChange={e => setConfigForm({ ...configForm, [f.key]: e.target.value })} className="w-full border p-3 rounded-xl outline-none" />
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Tipo de Documento</label>
+                  <select value={configForm.docType || 'CNPJ'} onChange={e => setConfigForm({ ...configForm, docType: e.target.value })} className="w-full border p-3 rounded-xl bg-white outline-none">
+                    <option>CNPJ</option><option>CPF</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{configForm.docType || 'CNPJ'}</label>
+                  <input value={configForm.docType === 'CPF' ? maskCpf(configForm.docId || '') : maskCnpj(configForm.docId || '')} onChange={e => setConfigForm({ ...configForm, docId: e.target.value.replace(/\D/g, '') })} className="w-full border p-3 rounded-xl outline-none" placeholder={configForm.docType === 'CPF' ? '000.000.000-00' : '00.000.000/0001-00'} />
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-3xl border space-y-4">
+                <h3 className="font-bold text-lg flex items-center gap-2"><Lock size={18} /> Senhas de Acesso</h3>
+                {[
+                  { label: 'Senha do Caixa (POS)', key: 'posPassword', placeholder: 'Padrão: 1234' },
+                  { label: 'Senha das Configurações', key: 'settingsPassword', placeholder: 'Padrão: 1234' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{f.label}</label>
+                    <input type="password" value={configForm[f.key] || ''} onChange={e => setConfigForm({ ...configForm, [f.key]: e.target.value })} className="w-full border p-3 rounded-xl outline-none" placeholder={f.placeholder} />
+                  </div>
+                ))}
+              </div>
+              <button onClick={saveSettings} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-slate-800 active:scale-95 transition-all">Salvar Configurações</button>
+              <div className="bg-red-50 p-6 rounded-3xl border border-red-200">
+                <h3 className="font-bold text-red-800 mb-2 flex items-center gap-2"><AlertTriangle size={18}/> Zona de Perigo</h3>
+                <p className="text-sm text-red-600 mb-4">Apaga TODOS os dados de venda para preparar o sistema para uso real. Produtos e configurações são mantidos.</p>
+                <button onClick={factoryResetSales} className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-red-700 active:scale-95 transition-all">Zerar Dados de Venda</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Movimentação de Caixa */}
+        {showCashMovementModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+              <h3 className="text-xl font-bold mb-4">Movimentação de Caixa</h3>
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  {['suprimento', 'sangria'].map(t => <button key={t} onClick={() => setMovementType(t)} className={`flex-1 py-3 rounded-xl font-bold capitalize ${movementType === t ? (t === 'suprimento' ? 'bg-green-600 text-white' : 'bg-red-600 text-white') : 'bg-slate-100 text-slate-600'}`}>{t}</button>)}
+                </div>
+                <input type="number" placeholder="Valor (R$)" value={movementValue} onChange={e => setMovementValue(e.target.value)} className="w-full border p-3 rounded-xl outline-none" />
+                <input placeholder="Descrição" value={movementDesc} onChange={e => setMovementDesc(e.target.value)} className="w-full border p-3 rounded-xl outline-none" />
+              </div>
+              <div className="flex gap-2 mt-6">
+                <button onClick={() => setShowCashMovementModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button>
+                <button onClick={handleAddCashMovement} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold">Salvar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Editar Produto */}
+        {editingProduct && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4">
+              <h3 className="font-bold text-xl">Editar Produto</h3>
+              <input value={editingProduct.name} onChange={e => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full border p-3 rounded-xl outline-none" placeholder="Nome" />
+              <input type="number" step="0.01" value={editingProduct.price} onChange={e => setEditingProduct({ ...editingProduct, price: e.target.value })} className="w-full border p-3 rounded-xl outline-none" placeholder="Preço" />
+              <select value={editingProduct.category} onChange={e => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full border p-3 rounded-xl bg-white outline-none">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select>
+              <input type="number" value={editingProduct.stock} onChange={e => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })} className="w-full border p-3 rounded-xl outline-none" placeholder="Estoque" />
+              <div className="flex gap-2">
+                <button onClick={() => setEditingProduct(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button>
+                <button onClick={handleDeleteProduct} className="py-3 px-4 bg-red-50 text-red-600 rounded-xl font-bold"><Trash2 size={18}/></button>
+                <button onClick={handleUpdateProduct} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold">Salvar</button>
               </div>
             </div>
           </div>
