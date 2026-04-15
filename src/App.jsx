@@ -83,6 +83,9 @@ const DEFAULT_PRODUCTS_SEED = [
 
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
 
+// Constante para as categorias que devem abrir o modal de complementos
+const BASE_CATEGORIES_FOR_ADDONS = ['Tapiocas', 'Cuscuz', 'Pão'];
+
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
 const formatMoney = (val) => {
   const n = typeof val === 'string' ? parseFloat(val) : val;
@@ -660,6 +663,9 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [aiResponse, setAiResponse] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
 
+  // NOVO ESTADO: Modal de Adicionais
+  const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
+
   useEffect(() => {
     if (!user) return;
     const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => {
@@ -698,65 +704,75 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   
   const addToCart = (p) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
-
-    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
-    const addonCategories = ['Adicionais'];
-
-    // --- LÓGICA DE UNIÃO AUTOMÁTICA ---
-    if (addonCategories.includes(p.category)) {
-      const reversedCart = [...cart].reverse();
-      const parentIdxInReversed = reversedCart.findIndex(i => baseCategories.includes(i.category));
-      
-      if (parentIdxInReversed !== -1) {
-        const actualIdx = cart.length - 1 - parentIdxInReversed;
-        const parentItem = cart[actualIdx];
-        
-        let newSubItems = [...(parentItem.subItems || [])];
-        const existingSub = newSubItems.find(s => String(s.id) === String(p.id) || (s.firestoreId && s.firestoreId === p.firestoreId));
-        
-        if (existingSub) {
-          newSubItems = newSubItems.map(s => (String(s.id) === String(p.id) || (s.firestoreId && s.firestoreId === p.firestoreId)) ? { ...s, qty: s.qty + 1 } : s);
-        } else {
-          newSubItems.push({ ...p, qty: 1 });
-        }
-        
-        const newCart = [...cart];
-        newCart[actualIdx] = { ...parentItem, subItems: newSubItems };
-        setCart(newCart);
-        showToastMsg(`${p.name} unido a ${parentItem.name}!`);
-        return;
-      }
-    } else if (baseCategories.includes(p.category)) {
-      const orphanAddons = cart.filter(i => (i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0));
-      
-      if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !((i.category === 'Adicionais' || i.category === 'Diversos') && (!i.subItems || i.subItems.length === 0)));
-        
-        let newSubItems = [];
-        orphanAddons.forEach(orphan => {
-           const ex = newSubItems.find(s => String(s.id) === String(orphan.id) || (s.firestoreId && s.firestoreId === orphan.firestoreId));
-           if (ex) {
-             ex.qty += orphan.qty;
-           } else {
-             newSubItems.push({ ...orphan });
-           }
-        });
-        
-        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems });
-        setCart(newCart);
-        showToastMsg(`Adicionais unidos a ${p.name}!`);
-        return;
-      }
+    
+    // Abre o Modal se for um item base
+    if (BASE_CATEGORIES_FOR_ADDONS.includes(p.category)) {
+      setAddonModalConfig({ isOpen: true, baseItem: p, addons: {} });
+      return;
     }
 
-    // Comportamento Normal
-    const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (!i.subItems || i.subItems.length === 0));
+    // Comportamento Normal: Adiciona ou incrementa direto no carrinho
+    const currentGuestName = 'Pessoa 1';
+    const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
+    
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
+      showToastMsg(`${p.name} quantidade aumentada!`);
     } else {
-      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [] }]);
+      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuestName }]);
+      showToastMsg(`${p.name} adicionado ao pedido!`);
     }
   };
+
+  // --- Funções do Modal de Adicionais ---
+  const handleAddonChange = (addonId, change) => {
+    setAddonModalConfig(prev => {
+      const currentQty = prev.addons[addonId] || 0;
+      const newQty = Math.max(0, currentQty + change);
+      return { ...prev, addons: { ...prev.addons, [addonId]: newQty } };
+    });
+  };
+
+  const calculateModalTotal = () => {
+    if (!addonModalConfig.baseItem) return 0;
+    let total = Number(addonModalConfig.baseItem.price);
+    Object.entries(addonModalConfig.addons).forEach(([addonId, qty]) => {
+      if (qty > 0) {
+        const p = products.find(prod => String(prod.id) === String(addonId));
+        if (p) total += Number(p.price) * qty;
+      }
+    });
+    return total;
+  };
+
+  const confirmAddonModal = () => {
+    const { baseItem, addons } = addonModalConfig;
+    if (!baseItem) return;
+
+    let newSubItems = [];
+    Object.entries(addons).forEach(([addonId, qty]) => {
+      if (qty > 0) {
+        const addonProduct = products.find(p => String(p.id) === String(addonId));
+        if (addonProduct) {
+          newSubItems.push({ ...addonProduct, qty });
+        }
+      }
+    });
+
+    const newItem = {
+      ...baseItem,
+      cartItemId: Date.now().toString() + Math.random().toString(),
+      qty: 1, // Sempre adiciona como 1 unidade isolada para permitir personalizações diferentes depois
+      obs: '',
+      subItems: newSubItems,
+      guest: 'Pessoa 1'
+    };
+
+    setCart([...cart, newItem]);
+    setAddonModalConfig({ isOpen: false, baseItem: null, addons: {} });
+    showToastMsg(`${baseItem.name} montado com sucesso!`);
+  };
+  // --------------------------------------
 
   const incrementQty = (cartItemId) => { setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i)); };
   const removeFromCart = (cartItemId) => {
@@ -974,21 +990,66 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
             {filtered.map(p => {
               const qty = cart.filter(i => i.id === p.id).reduce((sum, i) => sum + i.qty, 0);
               return (
-                <div key={p.id} className={`bg-white p-3 rounded-2xl shadow-sm border flex flex-col items-center text-center gap-2 transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'}`}>
+                <button key={p.id} onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`bg-white p-3 rounded-2xl shadow-sm border flex flex-col items-center text-center gap-2 transition-all active:scale-95 ${qty > 0 ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100'} ${p.stock <= 0 ? 'opacity-50' : ''}`}>
                   <div className="bg-slate-100 p-4 rounded-full mb-1"><IconMapper type={p.icon} className="w-8 h-8 text-slate-700" /></div>
                   <div className="flex-1 w-full"><div className="font-bold text-sm leading-tight mb-1 truncate px-1 text-slate-800">{p.name}</div><div className="text-sm font-bold text-blue-600">R$ {p.price.toFixed(2)}</div></div>
                   {p.stock > 0 ? (
                     <div className="w-full mt-1">
-                      <button onClick={() => addToCart(p)} className="w-full py-2 bg-slate-900 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-slate-800 active:scale-95 transition-transform">{qty > 0 ? `Adicionado (${qty})` : 'Adicionar'}</button>
+                      <div className="w-full py-2 bg-slate-900 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-slate-800 transition-transform">{qty > 0 ? `Adicionado (${qty})` : 'Adicionar'}</div>
                     </div>
                   ) : (<span className="text-xs font-bold text-red-400 mt-2 block w-full py-2 bg-red-50 rounded-lg">Esgotado</span>)}
-                </div>
+                </button>
               )
             })}
           </div>
         </div>
       )}
       
+      {/* MODAL DE ADICIONAIS (CLIENTE) */}
+      {addonModalConfig.isOpen && addonModalConfig.baseItem && (
+        <div className="fixed inset-0 bg-black/60 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full sm:zoom-in-95">
+             <div className="p-4 sm:p-6 border-b flex justify-between items-center bg-slate-50 sm:rounded-t-3xl rounded-t-3xl">
+               <div>
+                 <h3 className="font-bold text-xl text-slate-800">Monte: {addonModalConfig.baseItem.name}</h3>
+                 <p className="text-sm font-bold text-blue-600">{formatMoney(addonModalConfig.baseItem.price)}</p>
+               </div>
+               <button onClick={() => setAddonModalConfig({isOpen:false, baseItem:null, addons:{}})} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={20}/></button>
+             </div>
+
+             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
+               <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seus adicionais</h4>
+               {products.filter(p => p.category === 'Adicionais').map(addon => {
+                 const qty = addonModalConfig.addons[addon.id] || 0;
+                 return (
+                   <div key={addon.id} className={`flex justify-between items-center border-2 rounded-2xl p-3 shadow-sm transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/50' : 'bg-white border-slate-100'}`}>
+                     <div>
+                       <div className="font-bold text-slate-800 text-sm">{addon.name}</div>
+                       <div className="text-xs font-bold text-slate-500">+ {formatMoney(addon.price)}</div>
+                     </div>
+                     <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-xl">
+                       <button onClick={() => handleAddonChange(addon.id, -1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-red-500 disabled:opacity-30" disabled={qty === 0}><Minus size={16}/></button>
+                       <span className="font-black text-slate-800 w-4 text-center">{qty}</span>
+                       <button onClick={() => handleAddonChange(addon.id, 1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-green-600"><Plus size={16}/></button>
+                     </div>
+                   </div>
+                 )
+               })}
+               {products.filter(p => p.category === 'Adicionais').length === 0 && (
+                 <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum adicional cadastrado.</div>
+               )}
+             </div>
+
+             <div className="p-4 sm:p-6 border-t bg-white sm:rounded-b-3xl">
+                <button onClick={confirmAddonModal} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-between px-6 items-center">
+                  <span>Confirmar & Adicionar</span>
+                  <span className="bg-indigo-800/50 px-3 py-1 rounded-lg">{formatMoney(calculateModalTotal())}</span>
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
       {view === 'cart' && (
         <div className="p-4 animate-in slide-in-from-right-4">
           <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-slate-800"><ShoppingCart /> Seu Pedido</h2>
@@ -1157,6 +1218,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [historySearch, setHistorySearch] = useState('');
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null);
 
+  // NOVO ESTADO: Modal de Adicionais
+  const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
+
   const clientRef = useRef(null);
   const phoneRef = useRef(null);
   const dateRef = useRef(null);
@@ -1208,65 +1272,74 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const addToCart = (p) => { 
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; } 
-    
-    const baseCategories = ['Tapiocas', 'Cuscuz', 'Pão', 'Lanches', 'Salgados e Caldos'];
-    const addonCategories = ['Adicionais'];
+    const currentGuestName = currentGuest || 'Pessoa 1';
 
-    // --- LÓGICA DE UNIÃO AUTOMÁTICA NO POS ---
-    if (addonCategories.includes(p.category)) {
-      const reversedCart = [...cart].reverse();
-      const parentIdxInReversed = reversedCart.findIndex(i => i.guest === currentGuest && baseCategories.includes(i.category));
-      
-      if (parentIdxInReversed !== -1) {
-        const actualIdx = cart.length - 1 - parentIdxInReversed;
-        const parentItem = cart[actualIdx];
-        
-        let newSubItems = [...(parentItem.subItems || [])];
-        const existingSub = newSubItems.find(s => s.id === p.id);
-        
-        if (existingSub) {
-          newSubItems = newSubItems.map(s => s.id === p.id ? { ...s, qty: s.qty + 1 } : s);
-        } else {
-          newSubItems.push({ ...p, qty: 1 });
-        }
-        
-        const newCart = [...cart];
-        newCart[actualIdx] = { ...parentItem, subItems: newSubItems };
-        setCart(newCart);
-        showToastMsg(`${p.name} unido a ${parentItem.name}!`);
-        return;
-      }
-    } else if (baseCategories.includes(p.category)) {
-      const orphanAddons = cart.filter(i => i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0));
-      
-      if (orphanAddons.length > 0) {
-        let newCart = cart.filter(i => !(i.guest === currentGuest && addonCategories.includes(i.category) && (!i.subItems || i.subItems.length === 0)));
-        
-        let newSubItems = [];
-        orphanAddons.forEach(orphan => {
-           const ex = newSubItems.find(s => s.id === orphan.id);
-           if (ex) {
-             ex.qty += orphan.qty;
-           } else {
-             newSubItems.push({ ...orphan });
-           }
-        });
-        
-        newCart.push({ ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: newSubItems, guest: currentGuest });
-        setCart(newCart);
-        showToastMsg(`Adicionais unidos a ${p.name}!`);
-        return;
-      }
+    // Abre o Modal se for um item base
+    if (BASE_CATEGORIES_FOR_ADDONS.includes(p.category)) {
+      setAddonModalConfig({ isOpen: true, baseItem: p, addons: {} });
+      return;
     }
 
-    // Comportamento Normal
-    const ex = cart.find(i => i.id === p.id && i.guest === currentGuest && (!i.subItems || i.subItems.length === 0));
+    // Comportamento Normal: Adiciona ou incrementa direto no carrinho
+    const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
+      showToastMsg(`${p.name} quantidade aumentada!`);
     } else {
-      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuest }]);
+      setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuestName }]);
+      showToastMsg(`${p.name} adicionado ao pedido!`);
     }
   };
+
+  // --- Funções do Modal de Adicionais ---
+  const handleAddonChange = (addonId, change) => {
+    setAddonModalConfig(prev => {
+      const currentQty = prev.addons[addonId] || 0;
+      const newQty = Math.max(0, currentQty + change);
+      return { ...prev, addons: { ...prev.addons, [addonId]: newQty } };
+    });
+  };
+
+  const calculateModalTotal = () => {
+    if (!addonModalConfig.baseItem) return 0;
+    let total = Number(addonModalConfig.baseItem.price);
+    Object.entries(addonModalConfig.addons).forEach(([addonId, qty]) => {
+      if (qty > 0) {
+        const p = products.find(prod => String(prod.id) === String(addonId));
+        if (p) total += Number(p.price) * qty;
+      }
+    });
+    return total;
+  };
+
+  const confirmAddonModal = () => {
+    const { baseItem, addons } = addonModalConfig;
+    if (!baseItem) return;
+
+    let newSubItems = [];
+    Object.entries(addons).forEach(([addonId, qty]) => {
+      if (qty > 0) {
+        const addonProduct = products.find(p => String(p.id) === String(addonId));
+        if (addonProduct) {
+          newSubItems.push({ ...addonProduct, qty });
+        }
+      }
+    });
+
+    const newItem = {
+      ...baseItem,
+      cartItemId: Date.now().toString() + Math.random().toString(),
+      qty: 1,
+      obs: '',
+      subItems: newSubItems,
+      guest: currentGuest || 'Pessoa 1'
+    };
+
+    setCart([...cart, newItem]);
+    setAddonModalConfig({ isOpen: false, baseItem: null, addons: {} });
+    showToastMsg(`${baseItem.name} montado com sucesso!`);
+  };
+  // --------------------------------------
 
   const incrementQty = (cartItemId) => {
     setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i));
@@ -1952,6 +2025,51 @@ const PosView = ({ user, onBack, initialSettings }) => {
             )}
 
             {renameModal.show && <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-6 w-full max-w-sm"><input autoFocus value={renameModal.newName} onChange={e=>setRenameModal({...renameModal,newName:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}}} className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome" /><div className="flex gap-2"><button onClick={()=>setRenameModal({show:false,oldName:'',newName:''})} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button><button onClick={()=>{const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button></div></div></div>}
+          </div>
+        )}
+
+        {/* MODAL DE ADICIONAIS (POS) */}
+        {addonModalConfig.isOpen && addonModalConfig.baseItem && (
+          <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
+               <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-3xl">
+                 <div>
+                   <h3 className="font-bold text-xl text-slate-800">Monte: {addonModalConfig.baseItem.name}</h3>
+                   <p className="text-sm font-bold text-blue-600">{formatMoney(addonModalConfig.baseItem.price)}</p>
+                 </div>
+                 <button onClick={() => setAddonModalConfig({isOpen:false, baseItem:null, addons:{}})} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={20}/></button>
+               </div>
+
+               <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                 <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seus adicionais</h4>
+                 {products.filter(p => p.category === 'Adicionais').map(addon => {
+                   const qty = addonModalConfig.addons[addon.id] || 0;
+                   return (
+                     <div key={addon.id} className={`flex justify-between items-center border-2 rounded-2xl p-3 shadow-sm transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/50' : 'bg-white border-slate-100'}`}>
+                       <div>
+                         <div className="font-bold text-slate-800 text-sm">{addon.name}</div>
+                         <div className="text-xs font-bold text-slate-500">+ {formatMoney(addon.price)}</div>
+                       </div>
+                       <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-xl">
+                         <button onClick={() => handleAddonChange(addon.id, -1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-red-500 disabled:opacity-30" disabled={qty === 0}><Minus size={16}/></button>
+                         <span className="font-black text-slate-800 w-4 text-center">{qty}</span>
+                         <button onClick={() => handleAddonChange(addon.id, 1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-green-600"><Plus size={16}/></button>
+                       </div>
+                     </div>
+                   )
+                 })}
+                 {products.filter(p => p.category === 'Adicionais').length === 0 && (
+                   <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum adicional cadastrado.</div>
+                 )}
+               </div>
+
+               <div className="p-6 border-t bg-white rounded-b-3xl">
+                  <button onClick={confirmAddonModal} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-between px-6 items-center">
+                    <span>Confirmar & Adicionar</span>
+                    <span className="bg-indigo-800/50 px-3 py-1 rounded-lg">{formatMoney(calculateModalTotal())}</span>
+                  </button>
+               </div>
+            </div>
           </div>
         )}
 
