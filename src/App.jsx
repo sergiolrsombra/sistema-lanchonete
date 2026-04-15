@@ -139,20 +139,37 @@ const handlePrint = (order, settings, type = 'customer') => {
   const storeAddress = settings?.address || "Av. Contorno Norte, 1050-A, Conjunto Esperança";
   
   let itemsHtml = '';
+  
+  // Agrupar itens por Pessoa
+  const groupedItems = {};
   order.items?.forEach(i => {
-    const guestLabel = (i.guest && type === 'customer' && !order.client?.includes('Pessoa')) ? ` <span style="font-size:0.8em; color:#666;">(${i.guest})</span>` : '';
-    itemsHtml += `
-      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-        <span style="font-weight: bold;">${i.qty}x ${i.name}${guestLabel}</span>
-        ${type === 'customer' ? `<span>${formatMoney(calcItemTotal(i))}</span>` : ''}
-      </div>
-    `;
-    i.subItems?.forEach(sub => {
-      itemsHtml += `<div style="margin-left: 10px; font-size: 0.85em; color: #444;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
-    });
-    if (i.obs) {
-      itemsHtml += `<div style="margin-left: 10px; font-size: 0.85em; font-style: italic; color: #d32f2f;">Obs: ${i.obs}</div>`;
+    const guest = i.guest || 'Pessoa 1';
+    if (!groupedItems[guest]) groupedItems[guest] = [];
+    groupedItems[guest].push(i);
+  });
+
+  const guests = Object.keys(groupedItems);
+  const multipleGuests = guests.length > 1;
+
+  guests.forEach(guest => {
+    if (multipleGuests || guest !== 'Pessoa 1') {
+      itemsHtml += `<div style="margin-top: 10px; border-bottom: 1px dashed #ccc; font-weight: bold; font-size: 0.95em; padding-bottom: 2px;">👤 ${guest}</div>`;
     }
+    
+    groupedItems[guest].forEach(i => {
+      itemsHtml += `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; margin-top: 4px;">
+          <span style="font-weight: bold;">${i.qty}x ${i.name}</span>
+          ${type === 'customer' ? `<span>${formatMoney(calcItemTotal(i))}</span>` : ''}
+        </div>
+      `;
+      i.subItems?.forEach(sub => {
+        itemsHtml += `<div style="margin-left: 10px; font-size: 0.85em; color: #444;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
+      });
+      if (i.obs) {
+        itemsHtml += `<div style="margin-left: 10px; font-size: 0.85em; font-style: italic; color: #d32f2f;">Obs: ${i.obs}</div>`;
+      }
+    });
   });
 
   const content = `
@@ -292,7 +309,14 @@ const CashControl = ({ user, orders }) => {
     const loadCalculator = async () => {
       try {
         const docSnap = await getDoc(getDocRef('app_state', 'calculator')); 
-        if (docSnap.exists()) setCashCounts(docSnap.data()); 
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setCashCounts({
+            bills: data.bills || { 200: '', 100: '', 50: '', 20: '', 10: '', 5: '', 2: '' },
+            coins: data.coins || { 1: '', 0.50: '', 0.25: '', 0.10: '', 0.05: '' },
+            pix: data.pix || ''
+          });
+        }
         isCalculatorLoaded.current = true;
       } catch (e) { isCalculatorLoaded.current = true; }
     };
@@ -355,13 +379,17 @@ const CashControl = ({ user, orders }) => {
     setIsSubmitting(false); 
   };
 
-  const handleCashCountChange = (type, denom, value) => setCashCounts(prev => ({ ...prev, [type]: { ...prev[type], [denom]: value } }));
+  const handleCashCountChange = (type, denom, value) => setCashCounts(prev => ({ ...prev, [type]: { ...(prev[type] || {}), [denom]: value } }));
   
   const calculateCashTotal = useMemo(() => {
     let totalBills = 0, totalCoins = 0;
-    Object.keys(cashCounts.bills).forEach(k => totalBills += (parseFloat(cashCounts.bills[k]) || 0) * parseFloat(k)); 
-    Object.keys(cashCounts.coins).forEach(k => totalCoins += (parseFloat(cashCounts.coins[k]) || 0) * parseFloat(k));
-    return { totalBills, totalCoins, grandTotal: totalBills + totalCoins + (parseFloat(cashCounts.pix) || 0) };
+    if (cashCounts?.bills) {
+      Object.keys(cashCounts.bills).forEach(k => totalBills += (parseFloat(cashCounts.bills[k]) || 0) * parseFloat(k)); 
+    }
+    if (cashCounts?.coins) {
+      Object.keys(cashCounts.coins).forEach(k => totalCoins += (parseFloat(cashCounts.coins[k]) || 0) * parseFloat(k));
+    }
+    return { totalBills, totalCoins, grandTotal: totalBills + totalCoins + (parseFloat(cashCounts?.pix) || 0) };
   }, [cashCounts]);
 
   const handleCalcKeyDown = (e, currentId) => {
@@ -395,10 +423,10 @@ const CashControl = ({ user, orders }) => {
         groups[w] = { id: w, records: [], total: 0, totalPix: 0, totalCash: 0, totalCard: 0, startDate: rec.date, endDate: rec.date }; 
       }
       groups[w].records.push(rec); 
-      groups[w].total += rec.total; 
-      groups[w].totalPix += rec.pix; 
-      groups[w].totalCash += rec.cash; 
-      groups[w].totalCard += rec.card; 
+      groups[w].total += (Number(rec.total) || 0); 
+      groups[w].totalPix += (Number(rec.pix) || 0); 
+      groups[w].totalCash += (Number(rec.cash) || 0); 
+      groups[w].totalCard += (Number(rec.card) || 0); 
       if (rec.date < groups[w].startDate) groups[w].startDate = rec.date; 
       if (rec.date > groups[w].endDate) groups[w].endDate = rec.date;
     }); 
@@ -413,10 +441,10 @@ const CashControl = ({ user, orders }) => {
       if (!groups[m]) {
         groups[m] = { id: m, total: 0, totalPix: 0, totalCash: 0, totalCard: 0 };
       }
-      groups[m].total += (rec.total || 0);
-      groups[m].totalPix += (rec.pix || 0);
-      groups[m].totalCash += (rec.cash || 0);
-      groups[m].totalCard += (rec.card || 0);
+      groups[m].total += (Number(rec.total) || 0);
+      groups[m].totalPix += (Number(rec.pix) || 0);
+      groups[m].totalCash += (Number(rec.cash) || 0);
+      groups[m].totalCard += (Number(rec.card) || 0);
     });
     return Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
   }, [records]);
@@ -429,10 +457,10 @@ const CashControl = ({ user, orders }) => {
       if (!groups[y]) {
         groups[y] = { id: y, total: 0, totalPix: 0, totalCash: 0, totalCard: 0 };
       }
-      groups[y].total += (rec.total || 0);
-      groups[y].totalPix += (rec.pix || 0);
-      groups[y].totalCash += (rec.cash || 0);
-      groups[y].totalCard += (rec.card || 0);
+      groups[y].total += (Number(rec.total) || 0);
+      groups[y].totalPix += (Number(rec.pix) || 0);
+      groups[y].totalCash += (Number(rec.cash) || 0);
+      groups[y].totalCard += (Number(rec.card) || 0);
     });
     return Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
   }, [records]);
@@ -579,8 +607,8 @@ const CashControl = ({ user, orders }) => {
                 {[200, 100, 50, 20, 10, 5, 2].map(val => (
                   <div key={val} className="flex items-center justify-between">
                     <span className="text-sm font-bold text-slate-600 w-20">R$ {val},00</span>
-                    <input type="number" ref={el => cashCalculatorRefs.current[`bill-${val}`] = el} onKeyDown={e => handleCalcKeyDown(e, `bill-${val}`)} value={cashCounts.bills[val]} onChange={e => handleCashCountChange('bills', val, e.target.value)} className="border rounded-lg p-2 w-20 text-center font-bold outline-none focus:border-blue-500" />
-                    <span className="text-sm font-black text-slate-800 w-24 text-right">{formatMoney((parseFloat(cashCounts.bills[val]) || 0) * val)}</span>
+                    <input type="number" ref={el => cashCalculatorRefs.current[`bill-${val}`] = el} onKeyDown={e => handleCalcKeyDown(e, `bill-${val}`)} value={cashCounts?.bills?.[val] || ''} onChange={e => handleCashCountChange('bills', val, e.target.value)} className="border rounded-lg p-2 w-20 text-center font-bold outline-none focus:border-blue-500" />
+                    <span className="text-sm font-black text-slate-800 w-24 text-right">{formatMoney((parseFloat(cashCounts?.bills?.[val]) || 0) * val)}</span>
                   </div>
                 ))}
               </div>
@@ -591,13 +619,13 @@ const CashControl = ({ user, orders }) => {
                 {[1, 0.50, 0.25, 0.10, 0.05].map(val => (
                   <div key={val} className="flex items-center justify-between">
                     <span className="text-sm font-bold text-slate-600 w-20">R$ {val.toFixed(2)}</span>
-                    <input type="number" ref={el => cashCalculatorRefs.current[`coin-${val}`] = el} onKeyDown={e => handleCalcKeyDown(e, `coin-${val}`)} value={cashCounts.coins[val]} onChange={e => handleCashCountChange('coins', val, e.target.value)} className="border rounded-lg p-2 w-20 text-center font-bold outline-none focus:border-blue-500" />
-                    <span className="text-sm font-black text-slate-800 w-24 text-right">{formatMoney((parseFloat(cashCounts.coins[val]) || 0) * val)}</span>
+                    <input type="number" ref={el => cashCalculatorRefs.current[`coin-${val}`] = el} onKeyDown={e => handleCalcKeyDown(e, `coin-${val}`)} value={cashCounts?.coins?.[val] || ''} onChange={e => handleCashCountChange('coins', val, e.target.value)} className="border rounded-lg p-2 w-20 text-center font-bold outline-none focus:border-blue-500" />
+                    <span className="text-sm font-black text-slate-800 w-24 text-right">{formatMoney((parseFloat(cashCounts?.coins?.[val]) || 0) * val)}</span>
                   </div>
                 ))}
                 <div className="mt-4 pt-4 border-t flex justify-between items-center">
                   <span className="font-bold text-green-600 text-sm">Saldo Banco</span>
-                  <input type="number" step="0.01" ref={el => cashCalculatorRefs.current['pix-val'] = el} onKeyDown={e => handleCalcKeyDown(e, 'pix-val')} value={cashCounts.pix} onChange={e => setCashCounts(prev => ({ ...prev, pix: e.target.value }))} className="border rounded-lg p-2 w-28 text-right bg-green-50 font-bold outline-none focus:border-green-500" placeholder="0.00"/>
+                  <input type="number" step="0.01" ref={el => cashCalculatorRefs.current['pix-val'] = el} onKeyDown={e => handleCalcKeyDown(e, 'pix-val')} value={cashCounts?.pix || ''} onChange={e => setCashCounts(prev => ({ ...prev, pix: e.target.value }))} className="border rounded-lg p-2 w-28 text-right bg-green-50 font-bold outline-none focus:border-green-500" placeholder="0.00"/>
                 </div>
               </div>
             </div>
