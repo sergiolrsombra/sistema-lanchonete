@@ -651,7 +651,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderCounter, setOrderCounter] = useState(1000);
@@ -666,7 +666,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => {
       const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
       setProducts(list);
-      setCategories(['Todos', ...CATEGORIES]);
+      setCategories([...CATEGORIES]);
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => d.data());
@@ -888,7 +888,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     setIsAiLoading(false);
   };
 
-  const filtered = products.filter(p => (selectedCategory === 'Todos' || p.category === selectedCategory) && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filtered = products.filter(p => p.category === selectedCategory && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
   const total = getCartTotal(); 
   const count = cart.reduce((a, i) => a + i.qty, 0);
 
@@ -1084,7 +1084,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [renameModal, setRenameModal] = useState({ show: false, oldName: '', newName: '' });
 
   const [categories, setCategories] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
   const [searchTerm, setSearchTerm] = useState('');
 
   const [cart, setCart] = useState([]);
@@ -1178,7 +1178,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         const indexB = CATEGORIES.indexOf(b);
         return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
       });
-      setCategories(['Todos', ...fetchedCategories]);
+      setCategories([...fetchedCategories]);
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id); setOrders(list); 
@@ -1802,7 +1802,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const uniqueGuestsInTab = selectedTabToSettle ? [...new Set(safeTabSettleItems.map(i => i.guest || 'Pessoa 1'))] : [...new Set(cart.map(i => i.guest || 'Pessoa 1'))];
 
-  const filtered = products.filter(p => (selectedCategory === 'Todos' || p.category === selectedCategory) && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filtered = products.filter(p => p.category === selectedCategory && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const getFilteredOrders = () => {
     return orders.filter(o => {
