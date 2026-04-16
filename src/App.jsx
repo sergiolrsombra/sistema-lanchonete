@@ -83,7 +83,7 @@ const DEFAULT_PRODUCTS_SEED = [
 
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
 
-// Constante para as categorias que devem abrir o modal de complementos
+// Categorias que abrem o modal de inclusão de porções
 const BASE_CATEGORIES_FOR_ADDONS = ['Tapiocas', 'Cuscuz', 'Pão'];
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
@@ -220,27 +220,6 @@ const handlePrint = (order, settings, type = 'customer') => {
 
   printWindow.document.write(content);
   printWindow.document.close();
-};
-
-const maskCpf = (value) => {
-  if (!value) return "";
-  return value
-    .replace(/\D/g, '')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})/, '$1-$2')
-    .replace(/(-\d{2})\d+?$/, '$1');
-};
-
-const maskCnpj = (value) => {
-  if (!value) return "";
-  return value
-    .replace(/\D/g, '')
-    .replace(/(\d{2})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2')
-    .replace(/(-\d{2})\d+?$/, '$1');
 };
 
 const IconMapper = ({ type, className }) => {
@@ -669,17 +648,11 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   useEffect(() => {
     if (!user) return;
     const unsubProd = onSnapshot(query(getCollectionRef('products')), (snap) => {
-      if (snap.empty) {
-        const batch = writeBatch(db);
-        DEFAULT_PRODUCTS_SEED.forEach(p => { batch.set(doc(getCollectionRef('products'), p.id.toString()), p); });
-        batch.commit().catch(e => console.error("Erro ao popular BD:", e));
-      } else {
-        const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.id - b.id);
-        setProducts(list);
-        const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
-        setCategories(fetchedCategories);
-        setSelectedCategory(prev => fetchedCategories.includes(prev) ? prev : (fetchedCategories[0] || ''));
-      }
+      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => a.id - b.id);
+      setProducts(list);
+      const fetchedCategories = [...new Set(list.map(p => p.category).filter(Boolean))];
+      setCategories(fetchedCategories);
+      setSelectedCategory(prev => fetchedCategories.includes(prev) ? prev : (fetchedCategories[0] || ''));
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
       const list = snap.docs.map(d => d.data());
@@ -711,7 +684,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       return;
     }
 
-    // Comportamento Normal: Adiciona ou incrementa direto no carrinho
+    // Comportamento Normal
     const currentGuestName = 'Pessoa 1';
     const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
     
@@ -724,7 +697,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     }
   };
 
-  // --- Funções do Modal de Adicionais ---
   const handleAddonChange = (addonId, change) => {
     setAddonModalConfig(prev => {
       const currentQty = prev.addons[addonId] || 0;
@@ -762,7 +734,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     const newItem = {
       ...baseItem,
       cartItemId: Date.now().toString() + Math.random().toString(),
-      qty: 1, // Sempre adiciona como 1 unidade isolada para permitir personalizações diferentes depois
+      qty: 1,
       obs: '',
       subItems: newSubItems,
       guest: 'Pessoa 1'
@@ -772,7 +744,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     setAddonModalConfig({ isOpen: false, baseItem: null, addons: {} });
     showToastMsg(`${baseItem.name} montado com sucesso!`);
   };
-  // --------------------------------------
 
   const incrementQty = (cartItemId) => { setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i)); };
   const removeFromCart = (cartItemId) => {
@@ -1280,7 +1251,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       return;
     }
 
-    // Comportamento Normal: Adiciona ou incrementa direto no carrinho
+    // Comportamento Normal
     const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
@@ -1291,7 +1262,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
     }
   };
 
-  // --- Funções do Modal de Adicionais ---
   const handleAddonChange = (addonId, change) => {
     setAddonModalConfig(prev => {
       const currentQty = prev.addons[addonId] || 0;
@@ -1339,7 +1309,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
     setAddonModalConfig({ isOpen: false, baseItem: null, addons: {} });
     showToastMsg(`${baseItem.name} montado com sucesso!`);
   };
-  // --------------------------------------
 
   const incrementQty = (cartItemId) => {
     setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i));
@@ -2227,13 +2196,16 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Ano</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.year)}</div></div>
             </div>
             <div className="space-y-4">{futureOrders.map(order => (
-              <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all cursor-pointer relative group">
+              <div key={order.firestoreId} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all relative group">
                 {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
                 <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
                 <div className="flex-1">
                   <div className="flex justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800">{order.client}</h3><div className="flex items-center gap-2 mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button></div></div><div className="text-right mr-10 md:mr-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição da Produção</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description || 'Sem detalhes.'}</p></div>
                   <div className="flex gap-2 justify-end">
+                    {order.status !== 'Concluído' && (
+                      <button onClick={() => setSelectedFutureOrder(order)} className="text-xs text-emerald-600 hover:text-emerald-800 font-bold px-4 py-2 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-1"><CheckSquare size={14}/> Finalizar Entrega</button>
+                    )}
                     <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="text-xs text-blue-600 hover:text-blue-800 font-bold px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"><Edit3 size={14}/> Editar</button>
                     <button onClick={(e) => { e.stopPropagation(); setConfirmState({ isOpen: true, msg: 'Excluir Encomenda?', action: async () => { await deleteDoc(getDocRef('future_orders', order.firestoreId)); setConfirmState({isOpen:false}); showToastMsg("Excluída!"); } }); }} className="text-xs text-red-500 hover:text-red-700 font-bold z-10 px-4 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1"><Trash2 size={14}/> Excluir</button>
                   </div>
@@ -2245,7 +2217,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
-        {/* MODAL NOVA ENCOMENDA */}
+        {/* MODAL NOVA ENCOMENDA / EDITAR */}
         {showOrderModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95">
@@ -2266,6 +2238,38 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between items-center mb-4"><label className="block text-sm font-black text-slate-700 uppercase">Sinal (Adiantamento)</label><span className="text-sm font-black text-pink-600 bg-pink-50 px-3 py-1 rounded-lg">Falta Receber: {formatMoney((parseFloat(orderTotalValue) || 0) - (parseFloat(orderSignal) || 0))}</span></div><div className="grid grid-cols-2 gap-4"><input ref={signalRef} type="number" step="0.01" value={orderSignal} onChange={e => setOrderSignal(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalMethodRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold" placeholder="Valor Pago R$" /><select ref={signalMethodRef} value={orderSignalMethod} onChange={e => setOrderSignalMethod(e.target.value)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all bg-white font-bold"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão">Cartão</option></select></div></div>
               </div>
               <div className="p-5 bg-white border-t border-slate-200 flex justify-end gap-3"><button onClick={() => setShowOrderModal(false)} className="px-6 py-3.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Cancelar</button><button onClick={saveFutureOrder} className="px-10 py-3.5 rounded-xl font-black bg-pink-600 text-white hover:bg-pink-700 shadow-lg shadow-pink-600/30 transition-all active:scale-95 text-lg">Salvar Encomenda</button></div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE FINALIZAR ENTREGA (ENCOMENDA) */}
+        {selectedFutureOrder && (
+          <div className="fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95">
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center"><h3 className="font-bold text-xl">Finalizar Entrega</h3><button onClick={() => setSelectedFutureOrder(null)}><X/></button></div>
+              <div className="p-6 space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Cliente</p>
+                  <p className="font-bold text-slate-800">{selectedFutureOrder.client}</p>
+                </div>
+                <div className="bg-indigo-50 p-5 rounded-2xl flex justify-between items-center border border-indigo-100">
+                  <span className="font-bold text-indigo-900">Restante a Receber</span>
+                  <span className="text-2xl font-black text-indigo-600">{formatMoney(selectedFutureOrder.total - selectedFutureOrder.signal)}</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Valor Recebido (R$)</label>
+                  <input type="number" step="0.01" value={settleValue} onChange={e => setSettleValue(e.target.value)} className="w-full p-4 border rounded-2xl text-xl font-black outline-none focus:border-indigo-500" placeholder="0.00" autoFocus />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Método de Pagamento</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Pix', 'Dinheiro', 'Cartão'].map(m => (
+                      <button key={m} onClick={() => setSettleMethod(m)} className={`py-3 rounded-xl font-bold border transition-colors ${settleMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{m}</button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={handleSettleOrder} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all mt-4">Confirmar e Entregar</button>
+              </div>
             </div>
           </div>
         )}
