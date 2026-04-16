@@ -844,7 +844,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         }
       });
 
-      const cartWithStatus = cart.map(item => ({ ...item, kitchenStatus: 'Pendente' }));
+      const cartWithStatus = cart.map(item => ({ ...item, kitchenStatus: item.kitchenStatus || 'Pendente' }));
 
       const ordersSnap = await getDocs(query(getCollectionRef('orders')));
       const existingDoc = ordersSnap.docs.find(d => {
@@ -856,10 +856,11 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
 
       if (existingDoc) {
         const existingData = existingDoc.data();
+        const updatedItems = [...(existingData.items || []), ...cartWithStatus];
         await updateDoc(getDocRef('orders', existingDoc.id), {
-          items: [...(existingData.items || []), ...cartWithStatus],
+          items: updatedItems,
           total: (existingData.total || 0) + getCartTotal(),
-          kitchenStatus: 'Pendente',
+          kitchenStatus: updatedItems.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto',
           updatedAt: new Date().toISOString()
         });
         msg = `*ADICIONANDO AO PEDIDO - ${settings?.storeName}*\n\n`;
@@ -874,7 +875,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
           total: getCartTotal(), 
           status: 'ABERTO', 
           paymentStatus: 'ABERTO', 
-          kitchenStatus: 'Pendente', 
+          kitchenStatus: cartWithStatus.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto', 
           method: 'Aguardando', 
           date: new Date().toISOString(), 
           time: new Date().toLocaleTimeString().slice(0, 5), 
@@ -1417,7 +1418,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     // Lógica para divisão de conta (Partial Payment via Guest)
     const isPartialPayment = payingGuest !== 'Mesa Completa';
     
-    const cartWithStatus = cart.map(i => ({ ...i, kitchenStatus: 'Pendente' }));
+    const cartWithStatus = cart.map(i => ({ ...i, kitchenStatus: i.kitchenStatus || 'Pendente' }));
 
     const safeTabItems = selectedTabToSettle?.items || [];
     const itemsToPay = selectedTabToSettle 
@@ -1455,10 +1456,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (status === 'ABERTO') {
         const existing = orders.find(o => o.client?.toLowerCase().trim() === client?.toLowerCase().trim() && o.paymentStatus === 'ABERTO');
         if (existing) {
+          const updatedItems = [...(existing.items || []), ...cartWithStatus];
           await updateDoc(getDocRef('orders', existing.firestoreId), { 
-            items: [...(existing.items || []), ...cartWithStatus], 
+            items: updatedItems, 
             total: (existing.total || 0) + getCartTotal(), 
-            kitchenStatus: 'Pendente', 
+            kitchenStatus: updatedItems.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto', 
             updatedAt: nowISO 
           });
           showToastMsg(`Itens adicionados à comanda de ${client}!`);
@@ -1471,7 +1473,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             paymentStatus: 'ABERTO', 
             method: 'Aguardando', 
             client, 
-            kitchenStatus: 'Pendente', 
+            kitchenStatus: cartWithStatus.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto', 
             date: nowISO, 
             paidAt: null, 
             time: new Date().toLocaleTimeString().slice(0, 5), 
@@ -1514,7 +1516,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           await addDoc(getCollectionRef('orders'), { 
             ...orderData, 
             origin: 'Caixa (Parcial)', 
-            kitchenStatus: 'Pronto', 
+            kitchenStatus: itemsToPay.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto', 
             time: new Date().toLocaleTimeString().slice(0, 5),
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
           });
@@ -1522,6 +1524,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
             items: itemsToKeep,
             total: itemsToKeep.reduce((acc, item) => acc + calcItemTotal(item), 0),
+            kitchenStatus: itemsToKeep.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto',
             updatedAt: nowISO 
           });
         } else {
@@ -1533,7 +1536,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }], 
             paidAt: nowISO,
             receivedValue: orderData.receivedValue,
-            changeValue: orderData.changeValue
+            changeValue: orderData.changeValue,
+            kitchenStatus: itemsToPay.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto'
           });
         }
       } else {
@@ -1542,7 +1546,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           await addDoc(getCollectionRef('orders'), { 
             ...orderData, 
             origin: 'Caixa (Parcial)', 
-            kitchenStatus: 'Pendente', 
+            kitchenStatus: itemsToPay.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto', 
             time: new Date().toLocaleTimeString().slice(0, 5),
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }]
           });
@@ -1562,7 +1566,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           await addDoc(getCollectionRef('orders'), { 
             ...orderData, 
             origin: 'Caixa', 
-            kitchenStatus: 'Pendente', 
+            kitchenStatus: itemsToPay.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto', 
             time: new Date().toLocaleTimeString().slice(0, 5),
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }]
           });
