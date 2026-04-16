@@ -2108,6 +2108,71 @@ const PosView = ({ user, onBack, initialSettings }) => {
           <div className="fixed inset-0 bg-slate-900/80 z-[300] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center"><div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={48} className="text-green-600"/></div><h2 className="text-2xl font-black mb-2">Venda Finalizada!</h2><div className="space-y-3 mt-8"><button onClick={() => handlePrint(finalizedOrder, settings, 'customer')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2"><Printer size={20}/> Imprimir Recibo</button><button onClick={() => setFinalizedOrder(null)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold">Voltar ao Início</button></div></div></div>
         )}
 
+        {showPaymentModal && (
+          <div className="fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh] animate-in zoom-in-95">
+              <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
+                <h3 className="font-bold text-lg">Finalizar Venda</h3>
+                <button onClick={()=>{setShowPaymentModal(false); setSelectedTabToSettle(null);}} className="p-1 hover:bg-white/20 rounded-full transition-colors"><X size={20}/></button>
+              </div>
+              <div className="p-4 space-y-3 overflow-y-auto">
+                {uniqueGuestsInTab.length > 1 && (
+                  <div className="bg-slate-50 p-2 rounded-xl">
+                    <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                      <button onClick={()=>{setPayingGuest('Mesa Completa');setPartialPayments([]);setPaymentInputValue('');}} className={`px-4 py-2 rounded-lg text-xs font-bold border shrink-0 ${payingGuest==='Mesa Completa'?'bg-blue-600 text-white shadow-sm':'bg-white text-slate-600 border-slate-200'}`}>Tudo</button>
+                      {uniqueGuestsInTab.map(g=><button key={g} onClick={()=>{setPayingGuest(g);setPartialPayments([]);setPaymentInputValue('');}} className={`px-4 py-2 rounded-lg text-xs font-bold border shrink-0 ${payingGuest===g?'bg-blue-600 text-white shadow-sm':'bg-white text-slate-600 border-slate-200'}`}>{g}</button>)}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="bg-white p-3 rounded-xl border shadow-sm max-h-36 overflow-y-auto">
+                  <div className="space-y-2">
+                    {itemsToPayLive.map(i=>(
+                      <div key={i.cartItemId||Math.random()} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0">
+                        <div className="flex gap-2">
+                          <span className="font-black text-blue-600">{i.qty}x</span>
+                          <span className="font-bold leading-tight">{i.name}{i.subItems?.map(s=><span key={s.id} className="block text-xs font-medium text-slate-500">+ {s.qty*i.qty}x {s.name}</span>)}</span>
+                        </div>
+                        <span className="font-black">{formatMoney(calcItemTotal(i))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="bg-slate-100 p-3 rounded-xl flex justify-between items-center">
+                  <span className="font-bold text-sm text-slate-600">A Receber</span>
+                  <span className="text-2xl font-black text-blue-600">{formatMoney(modalTotal)}</span>
+                </div>
+                
+                <div>
+                  <input type="number" step="0.01" value={paymentInputValue} onChange={e=>setPaymentInputValue(e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl text-lg font-black outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" placeholder="Valor Dinheiro R$" />
+                  {liveChange>0 && <div className="bg-emerald-50 p-3 rounded-xl mt-2 flex justify-between items-center border border-emerald-100"><span className="font-bold text-emerald-700 text-sm">TROCO:</span><span className="text-xl font-black text-emerald-800">{formatMoney(liveChange)}</span></div>}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  {['Dinheiro', 'Pix', 'Crédito', 'Débito'].map(m=>(
+                    <button key={m} onClick={()=>{const r=parseFloat((paymentInputValue||'').replace(',','.'))||modalRemaining; const v=Math.min(r,modalRemaining); const up=[...partialPayments,{method:m,value:v,receivedValue:m==='Dinheiro'?r:v,changeValue:m==='Dinheiro'?Math.max(0,r-modalRemaining):0}]; setPartialPayments(up); setPaymentInputValue(''); if(up.reduce((a,p)=>a+p.value,0)>=modalTotal-0.01) finalizeOrder(customerName||'Balcão','PAGO',up); }} className="py-3 border border-slate-200 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors">{m}</button>
+                  ))}
+                </div>
+                
+                {!selectedTabToSettle && partialPayments.length===0 && (
+                  <div className="pt-4 border-t border-slate-100 mt-1">
+                    <div className="grid grid-cols-5 gap-1.5 mb-3">
+                      {MESAS.map(m=><button key={m} onClick={()=>finalizeOrder(m,'ABERTO')} className={`py-1.5 text-[10px] font-bold rounded-lg border transition-colors ${orders.some(o=>o.client===m&&o.paymentStatus==='ABERTO')?'bg-indigo-50 text-indigo-700 border-indigo-200':'bg-white hover:bg-slate-50 border-slate-200'}`}>{m.replace('Mesa ','')}</button>)}
+                    </div>
+                    <div className="flex gap-2">
+                      <input placeholder="Nome Cliente" value={customerName} onChange={e=>setCustomerName(e.target.value)} className="flex-1 border border-slate-300 p-2.5 rounded-xl text-sm outline-none font-bold focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all" />
+                      <button onClick={()=>finalizeOrder(customerName,'ABERTO')} disabled={!customerName} className="bg-orange-500 hover:bg-orange-600 transition-colors text-white px-4 rounded-xl font-bold text-sm disabled:opacity-50 shadow-sm">Abrir Conta</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {renameModal.show && <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-6 w-full max-w-sm"><input autoFocus value={renameModal.newName} onChange={e=>setRenameModal({...renameModal,newName:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}}} className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome" /><div className="flex gap-2"><button onClick={()=>setRenameModal({show:false,oldName:'',newName:''})} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button><button onClick={()=>{const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button></div></div></div>}
+
         {/* VIEWS */}
         {view === 'pos' && (
           <div className="flex h-screen">
@@ -2143,19 +2208,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
               </div>
               <div className="p-5 border-t bg-slate-50"><div className="flex justify-between mb-4 items-center"><span className="font-bold uppercase text-sm">Total</span><span className="text-3xl font-black text-blue-600">{formatMoney(cartTotal)}</span></div><div className="flex flex-col gap-3">{customerName && <button onClick={()=>finalizeOrder(customerName, 'ABERTO')} disabled={cart.length===0} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex justify-center gap-2 disabled:opacity-50"><ListPlus size={18}/> Lançar Comanda</button>}<button onClick={()=>{if(cart.length>0){setSelectedTabToSettle(null);setPartialPayments([]);setPaymentInputValue('');setPayingGuest('Mesa Completa');setShowPaymentModal(true);}}} disabled={cart.length===0} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50">COBRAR AGORA</button></div></div>
             </div>
-            
-            {showPaymentModal && (
-              <div className="fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-4"><div className="bg-white w-full max-w-md rounded-3xl overflow-hidden"><div className="p-6 bg-slate-900 text-white flex justify-between"><h3 className="font-bold text-xl">Finalizar Venda</h3><button onClick={()=>setShowPaymentModal(false)}><X/></button></div><div className="p-6 space-y-4">
-                {uniqueGuestsInTab.length > 1 && <div className="bg-slate-50 p-4 rounded-2xl"><div className="flex gap-2 overflow-x-auto"><button onClick={()=>{setPayingGuest('Mesa Completa');setPartialPayments([]);setPaymentInputValue('');}} className={`px-5 py-2.5 rounded-xl text-sm font-bold border shrink-0 ${payingGuest==='Mesa Completa'?'bg-blue-600 text-white':'bg-white text-slate-600'}`}>Tudo</button>{uniqueGuestsInTab.map(g=><button key={g} onClick={()=>{setPayingGuest(g);setPartialPayments([]);setPaymentInputValue('');}} className={`px-5 py-2.5 rounded-xl text-sm font-bold border shrink-0 ${payingGuest===g?'bg-blue-600 text-white':'bg-white text-slate-600'}`}>{g}</button>)}</div></div>}
-                <div className="bg-white p-4 rounded-2xl border shadow-sm max-h-48 overflow-y-auto"><div className="space-y-3">{itemsToPayLive.map(i=><div key={i.cartItemId||Math.random()} className="flex justify-between text-sm border-b pb-2"><div className="flex gap-2"><span className="font-black text-blue-600">{i.qty}x</span><span className="font-bold">{i.name}{i.subItems?.map(s=><span key={s.id} className="block text-xs font-medium text-slate-500">+ {s.qty*i.qty}x {s.name}</span>)}</span></div><span className="font-black">{formatMoney(calcItemTotal(i))}</span></div>)}</div></div>
-                <div className="bg-slate-100 p-5 rounded-2xl flex justify-between"><span className="font-bold">A Receber</span><span className="text-3xl font-black text-blue-600">{formatMoney(modalTotal)}</span></div>
-                <div><input type="number" step="0.01" value={paymentInputValue} onChange={e=>setPaymentInputValue(e.target.value)} className="w-full p-4 border rounded-2xl text-xl font-black outline-none" placeholder="Valor Dinheiro R$" />{liveChange>0 && <div className="bg-emerald-50 p-4 rounded-2xl mt-3 flex justify-between"><span className="font-bold text-emerald-700">TROCO:</span><span className="text-2xl font-black text-emerald-800">{formatMoney(liveChange)}</span></div>}</div>
-                <div className="grid grid-cols-2 gap-3">{['Dinheiro', 'Pix', 'Crédito', 'Débito'].map(m=><button key={m} onClick={()=>{const r=parseFloat((paymentInputValue||'').replace(',','.'))||modalRemaining; const v=Math.min(r,modalRemaining); const up=[...partialPayments,{method:m,value:v,receivedValue:m==='Dinheiro'?r:v,changeValue:m==='Dinheiro'?Math.max(0,r-modalRemaining):0}]; setPartialPayments(up); setPaymentInputValue(''); if(up.reduce((a,p)=>a+p.value,0)>=modalTotal-0.01) finalizeOrder(customerName||'Balcão','PAGO',up); }} className="py-4 border rounded-xl font-bold hover:bg-slate-50">{m}</button>)}</div>
-                {!selectedTabToSettle && partialPayments.length===0 && <div className="pt-6 border-t mt-2"><div className="grid grid-cols-5 gap-2 mb-4">{MESAS.map(m=><button key={m} onClick={()=>finalizeOrder(m,'ABERTO')} className={`py-2 text-xs font-bold rounded-lg border ${orders.some(o=>o.client===m&&o.paymentStatus==='ABERTO')?'bg-indigo-50 text-indigo-700':'bg-white hover:bg-slate-50'}`}>{m.replace('Mesa ','')}</button>)}</div><div className="flex gap-3"><input placeholder="Nome Cliente" value={customerName} onChange={e=>setCustomerName(e.target.value)} className="flex-1 border p-3 rounded-xl text-sm outline-none font-bold" /><button onClick={()=>finalizeOrder(customerName,'ABERTO')} disabled={!customerName} className="bg-orange-500 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50">Abrir Conta</button></div></div>}
-              </div></div></div>
-            )}
-
-            {renameModal.show && <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-6 w-full max-w-sm"><input autoFocus value={renameModal.newName} onChange={e=>setRenameModal({...renameModal,newName:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}}} className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome" /><div className="flex gap-2"><button onClick={()=>setRenameModal({show:false,oldName:'',newName:''})} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button><button onClick={()=>{const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button></div></div></div>}
           </div>
         )}
 
