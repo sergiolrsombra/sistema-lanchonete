@@ -105,6 +105,17 @@ const getTodayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+const getLocalYMD = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr.split('T')[0];
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  } catch (e) {
+    return String(dateStr).split('T')[0];
+  }
+};
+
 const getWeekId = (dateStr) => {
   if (!dateStr) return 'sem-data';
   try {
@@ -314,7 +325,7 @@ const CashControl = ({ user, orders }) => {
 
   const posTotals = useMemo(() => {
     if (!orders || !date) return { pix: 0, cash: 0, card: 0, total: 0 };
-    const dailyOrders = orders.filter(o => o?.paymentStatus === 'PAGO' && (o.paidAt || o.date)?.startsWith(date));
+    const dailyOrders = orders.filter(o => o?.paymentStatus === 'PAGO' && getLocalYMD(o.paidAt || o.date) === date);
     const acc = { pix: 0, cash: 0, card: 0, total: 0 };
     dailyOrders.forEach(order => {
       acc.total += Number(order.total) || 0;
@@ -1661,7 +1672,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const orderData = {
       client: orderClient,
       phone: orderPhone,
-      deliveryDate: orderDate || new Date().toISOString().split('T')[0],
+      deliveryDate: orderDate || getTodayStr(),
       deliveryTime: orderTime || '12:00',
       description: orderObs,
       total: totalVal,
@@ -1887,11 +1898,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const totalSangria = filteredMovements.filter(m => m.type === 'sangria').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
   
   const orderMetrics = useMemo(() => {
-    const now = new Date(); const today = now.toISOString().split('T')[0]; const cm = today.slice(0, 7); const cy = today.slice(0, 4); 
+    const now = new Date(); const today = getTodayStr(); const cm = today.slice(0, 7); const cy = today.slice(0, 4); 
     const getWeek = (d) => { const date = new Date(d); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7); const w1 = new Date(date.getFullYear(), 0, 4); return 1 + Math.round(((date.getTime() - w1.getTime()) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7); }; 
     const cw = getWeek(now); let day = 0, week = 0, month = 0, year = 0; 
     futureOrders.forEach(o => {
-      if (o.status === 'Cancelado') return; const d = String(o.deliveryDate || ''); const val = Number(o.total) || 0; if (d === today) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d)) === cw && d.startsWith(cy)) week += val;
+      if (o.status === 'Cancelado') return; const d = String(o.deliveryDate || ''); const val = Number(o.total) || 0; if (d === today) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d + 'T12:00:00')) === cw && d.startsWith(cy)) week += val;
     });
     return { day, week, month, year };
   }, [futureOrders]);
@@ -1899,8 +1910,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const historyOrders = useMemo(() => {
     return orders.filter(o => {
       if (o.paymentStatus !== 'PAGO') return false;
-      const orderDateStr = o.paidAt || o.date || '';
-      if (!orderDateStr.startsWith(historyDate)) return false;
+      if (getLocalYMD(o.paidAt || o.date) !== historyDate) return false;
       if (historySearch && !o.client?.toLowerCase().includes(historySearch.toLowerCase())) return false;
       return true;
     }).sort((a, b) => new Date(b.paidAt || b.date) - new Date(a.paidAt || a.date));
