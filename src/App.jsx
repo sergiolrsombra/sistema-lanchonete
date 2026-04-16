@@ -93,11 +93,30 @@ const formatMoney = (val) => {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
+// Função blindada para pegar a data local (resolve o problema do fuso horário)
+const getLocalYMD = (dateStr) => {
+  if (!dateStr) return '';
+  if (typeof dateStr === 'string' && dateStr.length === 10 && !dateStr.includes('T')) {
+    return dateStr;
+  }
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return String(dateStr).split('T')[0];
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  } catch (e) {
+    return String(dateStr).split('T')[0];
+  }
+};
+
 const formatDate = (dateStr) => {
   if (!dateStr) return '--/--';
-  const parts = dateStr.split('-');
+  const localStr = getLocalYMD(dateStr);
+  const parts = localStr.split('-');
   if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
-  return dateStr;
+  return localStr;
 };
 
 const getTodayStr = () => {
@@ -105,24 +124,15 @@ const getTodayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const getLocalYMD = (dateStr) => {
-  if (!dateStr) return '';
+const getWeekId = (dateInput) => {
+  if (!dateInput) return 'sem-data';
   try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr.split('T')[0];
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  } catch (e) {
-    return String(dateStr).split('T')[0];
-  }
-};
-
-const getWeekId = (dateStr) => {
-  if (!dateStr) return 'sem-data';
-  try {
-    const d = new Date(dateStr.split('T')[0] + 'T12:00:00');
-    const start = new Date(d.getFullYear(), 0, 1);
-    const week = Math.ceil((((d.getTime() - start.getTime()) / 86400000) + start.getDay() + 1) / 7);
-    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+    const localYMD = getLocalYMD(dateInput);
+    const [y, m, d] = localYMD.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d, 12, 0, 0); 
+    const start = new Date(dateObj.getFullYear(), 0, 1);
+    const week = Math.ceil((((dateObj.getTime() - start.getTime()) / 86400000) + start.getDay() + 1) / 7);
+    return `${dateObj.getFullYear()}-W${String(week).padStart(2, '0')}`;
   } catch (e) { return 'erro-data'; }
 };
 
@@ -231,6 +241,27 @@ const handlePrint = (order, settings, type = 'customer') => {
 
   printWindow.document.write(content);
   printWindow.document.close();
+};
+
+const maskCpf = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/\D/g, '')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+    .replace(/(-\d{2})\d+?$/, '$1');
+};
+
+const maskCnpj = (value) => {
+  if (!value) return "";
+  return value
+    .replace(/\D/g, '')
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+    .replace(/(-\d{2})\d+?$/, '$1');
 };
 
 const IconMapper = ({ type, className }) => {
@@ -695,7 +726,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       return;
     }
 
-    // Comportamento Normal
+    // Comportamento Normal: Adiciona ou incrementa direto no carrinho
     const currentGuestName = 'Pessoa 1';
     const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
     
@@ -708,6 +739,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     }
   };
 
+  // --- Funções do Modal de Adicionais ---
   const handleAddonChange = (addonId, change) => {
     setAddonModalConfig(prev => {
       const currentQty = prev.addons[addonId] || 0;
@@ -745,7 +777,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     const newItem = {
       ...baseItem,
       cartItemId: Date.now().toString() + Math.random().toString(),
-      qty: 1,
+      qty: 1, // Sempre adiciona como 1 unidade isolada para permitir personalizações diferentes depois
       obs: '',
       subItems: newSubItems,
       guest: 'Pessoa 1'
@@ -755,6 +787,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     setAddonModalConfig({ isOpen: false, baseItem: null, addons: {} });
     showToastMsg(`${baseItem.name} montado com sucesso!`);
   };
+  // --------------------------------------
 
   const incrementQty = (cartItemId) => { setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i)); };
   const removeFromCart = (cartItemId) => {
@@ -1262,7 +1295,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       return;
     }
 
-    // Comportamento Normal
+    // Comportamento Normal: Adiciona ou incrementa direto no carrinho
     const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
     if (ex) {
       setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
@@ -1273,6 +1306,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     }
   };
 
+  // --- Funções do Modal de Adicionais ---
   const handleAddonChange = (addonId, change) => {
     setAddonModalConfig(prev => {
       const currentQty = prev.addons[addonId] || 0;
@@ -1320,6 +1354,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     setAddonModalConfig({ isOpen: false, baseItem: null, addons: {} });
     showToastMsg(`${baseItem.name} montado com sucesso!`);
   };
+  // --------------------------------------
 
   const incrementQty = (cartItemId) => {
     setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, qty: i.qty + 1 } : i));
@@ -1468,6 +1503,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         method: methodString, 
         client: selectedTabToSettle ? (isPartialPayment ? `${selectedTabToSettle.client} (${payingGuest})` : selectedTabToSettle.client) : (client || (isPartialPayment ? `Balcão (${payingGuest})` : 'Balcão')), 
         date: selectedTabToSettle?.date || nowISO, 
+        paidAt: nowISO,
         receivedValue: cashPay ? received : null,
         changeValue: change > 0 ? change : null
       };
@@ -1481,7 +1517,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
             kitchenStatus: 'Pronto', 
             time: new Date().toLocaleTimeString().slice(0, 5),
             payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
-            paidAt: nowISO
           });
           
           await updateDoc(getDocRef('orders', selectedTabToSettle.firestoreId), { 
@@ -1509,8 +1544,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             origin: 'Caixa (Parcial)', 
             kitchenStatus: 'Pendente', 
             time: new Date().toLocaleTimeString().slice(0, 5),
-            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
-            paidAt: nowISO
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }]
           });
           await deductStock(itemsToPay);
           
@@ -1530,8 +1564,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             origin: 'Caixa', 
             kitchenStatus: 'Pendente', 
             time: new Date().toLocaleTimeString().slice(0, 5),
-            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }],
-            paidAt: nowISO
+            payments: paymentsToProcess.length > 0 ? paymentsToProcess : [{ method: 'Dinheiro', value: totalOrder }]
           });
           await deductStock(itemsToPay);
         }
@@ -1646,7 +1679,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     setEditingFutureOrder(order);
     setOrderClient(order.client);
     setOrderPhone(order.phone);
-    setOrderDate(order.deliveryDate);
+    setOrderDate(getLocalYMD(order.deliveryDate));
     setOrderTime(order.deliveryTime);
     setOrderObs(order.description);
     setOrderTotalValue(order.total);
@@ -1687,7 +1720,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       } else {
         await addDoc(getCollectionRef('future_orders'), { ...orderData, status: 'Pendente', createdAt: new Date().toISOString() });
         if (signalVal > 0) {
-          await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Sinal: ${orderClient}`, total: signalVal, status: 'Pago', paymentStatus: 'PAGO', method: orderSignalMethod, payments: [{ method: orderSignalMethod, value: signalVal }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Sinal Encomenda', price: signalVal, qty: 1 }] });
+          await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Sinal: ${orderClient}`, total: signalVal, status: 'Pago', paymentStatus: 'PAGO', method: orderSignalMethod, payments: [{ method: orderSignalMethod, value: signalVal }], date: new Date().toISOString(), paidAt: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Sinal Encomenda', price: signalVal, qty: 1 }] });
         }
         showToastMsg("Encomenda salva!");
       }
@@ -1703,7 +1736,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     try {
       const amountReceived = parseFloat(settleValue) || 0;
       await updateDoc(getDocRef('future_orders', selectedFutureOrder.firestoreId), { status: 'Concluído', finalPayment: amountReceived, finalPaymentMethod: settleMethod, completedAt: new Date().toISOString() });
-      if (amountReceived > 0) await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
+      if (amountReceived > 0) await addDoc(getCollectionRef('orders'), { id: orderCounter + 1, client: `Restante: ${selectedFutureOrder.client}`, total: amountReceived, status: 'Pago', paymentStatus: 'PAGO', method: settleMethod, payments: [{ method: settleMethod, value: amountReceived }], date: new Date().toISOString(), paidAt: new Date().toISOString(), time: new Date().toLocaleTimeString().slice(0, 5), origin: 'Encomenda', kitchenStatus: 'N/A', items: [{ name: 'Restante Encomenda', price: amountReceived, qty: 1 }] });
       setSelectedFutureOrder(null); 
       showToastMsg("Encerrada com sucesso!");
     } catch(e) { console.error(e); showToastMsg("Erro ao finalizar.", "error"); }
@@ -1862,15 +1895,18 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const getFilteredOrders = () => {
     return orders.filter(o => {
-      if (!o || o.paymentStatus !== 'PAGO' || !o.date) return false;
+      if (!o || o.paymentStatus !== 'PAGO' || (!o.paidAt && !o.date)) return false;
       try {
-        const orderDate = new Date(o.date);
+        const orderDateStr = o.paidAt || o.date;
+        const localYMD = getLocalYMD(orderDateStr);
+        const [oy, om, od] = localYMD.split('-').map(Number);
+
         if (reportMode === 'daily') {
-            return orderDate.getDate() === reportDate.getDate() && orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+            return od === reportDate.getDate() && (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear();
         } else if (reportMode === 'weekly') {
-            return getWeekId(String(o.date).split('T')[0] || String(o.date)) === getWeekId(reportDate.toISOString().split('T')[0]);
+            return getWeekId(localYMD) === getWeekId(getLocalYMD(reportDate.toISOString()));
         } else {
-            return orderDate.getMonth() === reportDate.getMonth() && orderDate.getFullYear() === reportDate.getFullYear();
+            return (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear();
         }
       } catch { return false; }
     });
@@ -1888,21 +1924,32 @@ const PosView = ({ user, onBack, initialSettings }) => {
   
   const filteredMovements = cashMovements.filter(m => {
     if (!m.date) return false;
-    const mDate = new Date(m.date); 
-    if (reportMode === 'daily') return mDate.getDate() === reportDate.getDate() && mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear(); 
-    else if (reportMode === 'weekly') return getWeekId(String(m.date).split('T')[0] || String(m.date)) === getWeekId(reportDate.toISOString().split('T')[0]);
-    else return mDate.getMonth() === reportDate.getMonth() && mDate.getFullYear() === reportDate.getFullYear();
+    const localYMD = getLocalYMD(m.date);
+    const [oy, om, od] = localYMD.split('-').map(Number);
+
+    if (reportMode === 'daily') return od === reportDate.getDate() && (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear(); 
+    else if (reportMode === 'weekly') return getWeekId(localYMD) === getWeekId(getLocalYMD(reportDate.toISOString()));
+    else return (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear();
   });
   
   const totalSuprimento = filteredMovements.filter(m => m.type === 'suprimento').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
   const totalSangria = filteredMovements.filter(m => m.type === 'sangria').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
   
   const orderMetrics = useMemo(() => {
-    const now = new Date(); const today = getTodayStr(); const cm = today.slice(0, 7); const cy = today.slice(0, 4); 
-    const getWeek = (d) => { const date = new Date(d); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7); const w1 = new Date(date.getFullYear(), 0, 4); return 1 + Math.round(((date.getTime() - w1.getTime()) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7); }; 
-    const cw = getWeek(now); let day = 0, week = 0, month = 0, year = 0; 
+    const today = getTodayStr(); 
+    const cm = today.slice(0, 7); 
+    const cy = today.slice(0, 4); 
+    const cw = getWeekId(today); 
+    
+    let day = 0, week = 0, month = 0, year = 0; 
     futureOrders.forEach(o => {
-      if (o.status === 'Cancelado') return; const d = String(o.deliveryDate || ''); const val = Number(o.total) || 0; if (d === today) day += val; if (d.startsWith(cm)) month += val; if (d.startsWith(cy)) year += val; if (getWeek(new Date(d + 'T12:00:00')) === cw && d.startsWith(cy)) week += val;
+      if (o.status === 'Cancelado') return; 
+      const d = getLocalYMD(o.deliveryDate || ''); 
+      const val = Number(o.total) || 0; 
+      if (d === today) day += val; 
+      if (d.startsWith(cm)) month += val; 
+      if (d.startsWith(cy)) year += val; 
+      if (getWeekId(d) === cw && d.startsWith(cy)) week += val;
     });
     return { day, week, month, year };
   }, [futureOrders]);
