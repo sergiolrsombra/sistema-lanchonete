@@ -1215,6 +1215,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const [actionAuthModal, setActionAuthModal] = useState({ show: false, action: null, order: null });
   const [actionPassword, setActionPassword] = useState('');
+  const [editingOrderDetails, setEditingOrderDetails] = useState(null);
   
   const [showDeleteAuthModal, setShowDeleteAuthModal] = useState(false);
   const [deletePasswordInput, setDeletePasswordInput] = useState('');
@@ -1604,43 +1605,66 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const { action, order } = actionAuthModal;
     if (!order) return;
 
-    try {
-      const batch = writeBatch(db);
-      const restores = getStockDeductions(order.items);
-      Object.entries(restores).forEach(([prodId, totalQty]) => {
-        const pItem = products.find(p => p.id === parseInt(prodId));
-        if (pItem && pItem.firestoreId) {
-          batch.update(getDocRef('products', pItem.firestoreId), { stock: pItem.stock + totalQty });
-        }
-      });
-      const orderRef = getDocRef('orders', order.firestoreId);
-      batch.delete(orderRef);
-      await batch.commit();
-
-      if (action === 'cancel') {
+    if (action === 'cancel') {
+      try {
+        const batch = writeBatch(db);
+        const restores = getStockDeductions(order.items);
+        Object.entries(restores).forEach(([prodId, totalQty]) => {
+          const pItem = products.find(p => String(p.id) === String(prodId));
+          if (pItem && pItem.firestoreId) {
+            batch.update(getDocRef('products', pItem.firestoreId), { stock: pItem.stock + totalQty });
+          }
+        });
+        const orderRef = getDocRef('orders', order.firestoreId);
+        batch.delete(orderRef);
+        await batch.commit();
         showToastMsg("Pedido cancelado e estoque restaurado!");
-      } else if (action === 'edit') {
-        setCart(order.items.map(i => ({ ...i, cartItemId: Date.now().toString() + Math.random().toString() })));
-        
-        // Reconstrói a lista de convidados se houver
-        const uniqueGuests = [...new Set(order.items.map(i => i.guest || 'Pessoa 1'))];
-        setGuestList(uniqueGuests.length > 0 ? uniqueGuests : ['Pessoa 1']);
-        setCurrentGuest(uniqueGuests.length > 0 ? uniqueGuests[0] : 'Pessoa 1');
-
-        const isTable = MESAS.includes(order.client);
-        if (isTable) {
-          setSelectedTabToSettle({ ...order, firestoreId: null });
-          setCustomerName('');
-        } else {
-          setCustomerName(order.client);
-          setSelectedTabToSettle(null);
-        }
-        setView('pos');
-        showToastMsg(`Pedido de ${order.client} carregado para edição.`);
-      }
-    } catch (error) { console.error(error); showToastMsg("Erro ao processar ação.", "error"); }
+      } catch (error) { console.error(error); showToastMsg("Erro ao processar ação.", "error"); }
+    } else if (action === 'edit') {
+      // EDIÇÃO SEGURA: Abre um modal dedicado em vez de jogar os itens de volta no POS e excluir a comanda
+      setEditingOrderDetails(JSON.parse(JSON.stringify(order)));
+    }
     setActionAuthModal({ show: false, action: null, order: null });
     setActionPassword('');
+  };
+
+  const handleSaveEditedOrder = async () => {
+    if (!editingOrderDetails) return;
+    try {
+      const originalOrder = orders.find(o => o.firestoreId === editingOrderDetails.firestoreId);
+      if (!originalOrder) return;
+
+      const originalDeductions = getStockDeductions(originalOrder.items || []);
+      const newDeductions = getStockDeductions(editingOrderDetails.items || []);
+
+      const batch = writeBatch(db);
+      
+      products.forEach(pItem => {
+         const oldQty = originalDeductions[pItem.id] || 0;
+         const newQty = newDeductions[pItem.id] || 0;
+         const diff = newQty - oldQty; 
+         if (diff !== 0) {
+            batch.update(getDocRef('products', pItem.firestoreId), {
+               stock: Math.max(0, pItem.stock - diff)
+            });
+         }
+      });
+
+      const newTotal = editingOrderDetails.items.reduce((acc, item) => acc + calcItemTotal(item), 0);
+
+      batch.update(getDocRef('orders', editingOrderDetails.firestoreId), {
+         items: editingOrderDetails.items,
+         total: newTotal,
+         updatedAt: new Date().toISOString()
+      });
+
+      await batch.commit();
+      showToastMsg("Comanda atualizada com sucesso!");
+      setEditingOrderDetails(null);
+    } catch(e) {
+      console.error(e);
+      showToastMsg("Erro ao atualizar comanda.", "error");
+    }
   };
   
   const triggerClearHistory = () => {
@@ -2003,6 +2027,83 @@ const PosView = ({ user, onBack, initialSettings }) => {
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertTriangle size={48}/></div><h3 className="text-xl font-bold mb-2 text-center">Apagar Vendas</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação apagará permanentemente todos os pedidos finalizados. Necessita senha de Configurações.</p><input type="password" autoFocus placeholder="Senha de Configuração" className="w-full border p-3 text-center mb-4 rounded-xl" value={deletePasswordInput} onChange={e=>setDeletePasswordInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&confirmClearHistory()} /><div className="flex gap-2"><button onClick={()=>{setShowDeleteAuthModal(false);setDeletePasswordInput('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={confirmClearHistory} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
         )}
 
+        {/* MODAL EDIÇÃO SEGURA DE COMANDA */}
+        {editingOrderDetails && (
+          <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
+              <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-3xl">
+                 <div>
+                   <h3 className="font-bold text-xl text-slate-800">Gerenciar Comanda</h3>
+                   <p className="text-sm font-bold text-blue-600">{editingOrderDetails.client}</p>
+                 </div>
+                 <button onClick={() => setEditingOrderDetails(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={20}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {editingOrderDetails.items?.length === 0 ? (
+                    <div className="text-center text-slate-500 font-medium py-10">Nenhum item na comanda.</div>
+                ) : (
+                    editingOrderDetails.items.map(item => (
+                        <div key={item.cartItemId} className="bg-white border rounded-2xl p-4 shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <div className="font-bold text-slate-800"><span className="text-blue-600 mr-1">{item.qty}x</span> {item.name}</div>
+                                    <div className="text-sm text-slate-500 font-medium">{formatMoney(calcItemTotal(item))}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => {
+                                        setEditingOrderDetails(prev => ({
+                                            ...prev,
+                                            items: prev.items.map(i => i.cartItemId === item.cartItemId ? { ...i, qty: Math.max(1, i.qty - 1) } : i)
+                                        }));
+                                    }} className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200"><Minus size={16}/></button>
+                                    <button onClick={() => {
+                                        setEditingOrderDetails(prev => ({
+                                            ...prev,
+                                            items: prev.items.map(i => i.cartItemId === item.cartItemId ? { ...i, qty: i.qty + 1 } : i)
+                                        }));
+                                    }} className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200"><Plus size={16}/></button>
+                                    <button onClick={() => {
+                                        setEditingOrderDetails(prev => ({
+                                            ...prev,
+                                            items: prev.items.filter(i => i.cartItemId !== item.cartItemId)
+                                        }));
+                                    }} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-lg hover:bg-red-100 ml-2"><Trash2 size={16}/></button>
+                                </div>
+                            </div>
+                            {item.subItems && item.subItems.length > 0 && (
+                                <div className="pl-3 mt-3 space-y-2 border-l-2 border-indigo-200">
+                                    {item.subItems.map(sub => (
+                                        <div key={sub.id} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg text-sm border border-slate-100">
+                                            <span className="font-bold text-slate-600 text-xs">+ {sub.qty * item.qty}x {sub.name}</span>
+                                            <button onClick={() => {
+                                                setEditingOrderDetails(prev => ({
+                                                    ...prev,
+                                                    items: prev.items.map(i => i.cartItemId === item.cartItemId ? {
+                                                        ...i, subItems: i.subItems.filter(s => String(s.id) !== String(sub.id))
+                                                    } : i)
+                                                }))
+                                            }} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={14}/></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ))
+                )}
+              </div>
+              <div className="p-6 border-t bg-white rounded-b-3xl">
+                  <div className="flex justify-between items-center mb-4">
+                      <span className="font-bold text-slate-500 uppercase text-sm">Novo Total</span>
+                      <span className="font-black text-2xl text-blue-600">{formatMoney(editingOrderDetails.items?.reduce((acc, item) => acc + calcItemTotal(item), 0) || 0)}</span>
+                  </div>
+                  <button onClick={handleSaveEditedOrder} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
+                    Salvar Alterações
+                  </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {finalizedOrder && (
           <div className="fixed inset-0 bg-slate-900/80 z-[300] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-8 w-full max-w-sm text-center"><div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle size={48} className="text-green-600"/></div><h2 className="text-2xl font-black mb-2">Venda Finalizada!</h2><div className="space-y-3 mt-8"><button onClick={() => handlePrint(finalizedOrder, settings, 'customer')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2"><Printer size={20}/> Imprimir Recibo</button><button onClick={() => setFinalizedOrder(null)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold">Voltar ao Início</button></div></div></div>
         )}
@@ -2257,7 +2358,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-pink-100"><div className="text-xs text-slate-500 uppercase font-bold mb-1">Total Ano</div><div className="text-2xl font-bold text-pink-600">{formatMoney(orderMetrics.year)}</div></div>
             </div>
             <div className="space-y-4">{futureOrders.map(order => (
-              <div key={order.firestoreId} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all relative group">
+              <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6 hover:shadow-md transition-all cursor-pointer relative group">
                 {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
                 <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
                 <div className="flex-1">
