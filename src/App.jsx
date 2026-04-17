@@ -174,21 +174,22 @@ const handlePrint = (order, settings, type = 'customer') => {
 
   guests.forEach(guest => {
     if (multipleGuests || guest !== 'Pessoa 1') {
-      itemsHtml += `<div style="margin-top: 4px; border-bottom: 1px dashed #000; font-weight: bold; font-size: 13px; padding-bottom: 2px;">👤 ${guest}</div>`;
+      itemsHtml += `<div style="margin-top: 4px; border-bottom: 1px dashed #000; font-weight: 900; font-size: 13px; padding-bottom: 2px;">👤 ${guest}</div>`;
     }
     
     groupedItems[guest].forEach(i => {
       itemsHtml += `
-        <div style="display: flex; justify-content: space-between; margin-bottom: 1px; margin-top: 2px; font-size: 12px;">
-          <span style="font-weight: bold;">${i.qty}x ${i.name}</span>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 1px; margin-top: 2px; font-size: 12px; font-weight: 700;">
+          <span>${i.qty}x ${i.name}</span>
           ${type === 'customer' ? `<span>${formatMoney(calcItemTotal(i))}</span>` : ''}
         </div>
       `;
       i.subItems?.forEach(sub => {
-        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; color: #333;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
+        // Removido o tom de cinza (#333) e forçado o preto (#000) e negrito para sair forte na térmica
+        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; color: #000; font-weight: 700;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
       });
       if (i.obs) {
-        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; font-style: italic; font-weight: bold;">Obs: ${i.obs}</div>`;
+        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; font-style: italic; font-weight: 900;">Obs: ${i.obs}</div>`;
       }
     });
   });
@@ -199,21 +200,31 @@ const handlePrint = (order, settings, type = 'customer') => {
       <head>
         <title>${type === 'customer' ? 'Recibo' : 'Ticket Cozinha'}</title>
         <style>
-          @page { margin: 0; } /* Deixa o driver da impressora cortar onde o conteúdo termina */
+          @page { margin: 0; } 
           html, body { margin: 0; padding: 0; background: #fff; height: fit-content; }
-          body { font-family: 'Courier New', Courier, monospace; width: 76mm; padding: 2mm 2mm 5mm 2mm; color: #000; line-height: 1.1; font-size: 12px; }
-          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
-          .footer { text-align: center; border-top: 1px dashed #000; padding-top: 4px; margin-top: 6px; font-size: 10px; padding-bottom: 8mm; }
-          .bold { font-weight: bold; }
-          .total-box { border-top: 1px dashed #000; margin-top: 6px; padding-top: 4px; }
+          body { 
+            font-family: Arial, Helvetica, sans-serif; /* Trocado Courier por Arial para letras mais grossas */
+            width: 76mm; 
+            padding: 2mm 2mm 5mm 2mm; 
+            color: #000 !important; 
+            line-height: 1.2; 
+            font-size: 12px; 
+            font-weight: 700; /* Força negrito em TODO o documento */
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact;
+          }
+          .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
+          .footer { text-align: center; border-top: 2px dashed #000; padding-top: 4px; margin-top: 6px; font-size: 11px; padding-bottom: 8mm; font-weight: 700; }
+          .bold { font-weight: 900; } /* Preto ultra forte */
+          .total-box { border-top: 2px solid #000; margin-top: 6px; padding-top: 4px; }
           .flex-between { display: flex; justify-content: space-between; margin-bottom: 2px; }
-          .text-lg { font-size: 14px; }
+          .text-lg { font-size: 15px; font-weight: 900; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h2 style="margin: 0; font-size: 16px;">${storeName}</h2>
-          ${type === 'customer' ? `<p style="margin: 2px 0 0 0; font-size: 11px;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<h2 style="margin: 2px 0 0 0;">TICKET COZINHA</h2>'}
+          <h2 style="margin: 0; font-size: 18px; font-weight: 900;">${storeName}</h2>
+          ${type === 'customer' ? `<p style="margin: 2px 0 0 0; font-size: 11px; font-weight: 700;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<h2 style="margin: 2px 0 0 0; font-weight: 900;">TICKET COZINHA</h2>'}
         </div>
         
         <div style="margin-bottom: 6px; font-size: 12px;">
@@ -222,16 +233,16 @@ const handlePrint = (order, settings, type = 'customer') => {
           <div class="flex-between"><span class="bold">Data:</span> <span>${new Date(order.paidAt || order.date).toLocaleString('pt-BR')}</span></div>
         </div>
 
-        <div style="border-top: 1px dashed #000; padding-top: 6px; margin-bottom: 6px;">
+        <div style="border-top: 2px dashed #000; padding-top: 6px; margin-bottom: 6px;">
           ${itemsHtml}
         </div>
 
         ${type === 'customer' ? `
           <div class="total-box">
             <div class="flex-between bold text-lg"><span>TOTAL:</span><span>${formatMoney(order.total)}</span></div>
-            <div class="flex-between mt-2"><span>PAGAMENTO:</span><span>${order.method || 'Dinheiro'}</span></div>
-            ${order.receivedValue ? `<div class="flex-between"><span>RECEBIDO:</span><span>${formatMoney(order.receivedValue)}</span></div>` : ''}
-            ${order.changeValue ? `<div class="flex-between"><span>TROCO:</span><span>${formatMoney(order.changeValue)}</span></div>` : ''}
+            <div class="flex-between mt-2" style="font-weight: 700;"><span>PAGAMENTO:</span><span>${order.method || 'Dinheiro'}</span></div>
+            ${order.receivedValue ? `<div class="flex-between" style="font-weight: 700;"><span>RECEBIDO:</span><span>${formatMoney(order.receivedValue)}</span></div>` : ''}
+            ${order.changeValue ? `<div class="flex-between" style="font-weight: 700;"><span>TROCO:</span><span>${formatMoney(order.changeValue)}</span></div>` : ''}
           </div>
         ` : ''}
 
@@ -940,7 +951,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1><p className="mt-4 text-green-100 text-center">Verifique o seu WhatsApp para concluir o pagamento.</p></div>;
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-24 font-sans w-full lg:max-w-md mx-auto lg:shadow-2xl relative lg:border-x border-slate-200 animate-in fade-in">
+    <div className="min-h-screen bg-slate-100 pb-6 font-sans w-full lg:max-w-md mx-auto lg:shadow-2xl relative lg:border-x border-slate-200 animate-in fade-in">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-20 shadow-md flex justify-between items-center">
@@ -1024,6 +1035,18 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
               )
             })}
           </div>
+
+          {count > 0 && (
+            <div className="px-4 pb-6 pt-2 w-full animate-in fade-in">
+              <button onClick={() => setView('cart')} className="w-full bg-slate-900 text-white p-4 rounded-2xl shadow-xl flex justify-between items-center hover:bg-slate-800 transition-colors active:scale-95 border border-slate-700">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white text-slate-900 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">{count}</div>
+                  <span className="font-bold">Ver Carrinho</span>
+                </div>
+                <span className="font-bold text-lg">R$ {total.toFixed(2)}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
       
@@ -1112,18 +1135,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
               </button>
             </>
           )}
-        </div>
-      )}
-      
-      {view === 'menu' && count > 0 && (
-        <div className="fixed bottom-4 left-0 right-0 z-30 w-full lg:max-w-md mx-auto px-4 animate-in slide-in-from-bottom-5">
-          <button onClick={() => setView('cart')} className="w-full bg-slate-900 text-white p-4 rounded-2xl shadow-xl flex justify-between items-center hover:bg-slate-800 transition-colors active:scale-95">
-            <div className="flex items-center gap-3">
-              <div className="bg-white text-slate-900 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">{count}</div>
-              <span className="font-bold">Ver Carrinho</span>
-            </div>
-            <span className="font-bold text-lg">R$ {total.toFixed(2)}</span>
-          </button>
         </div>
       )}
     </div>
