@@ -175,21 +175,21 @@ const handlePrint = (order, settings, type = 'customer') => {
 
   guests.forEach(guest => {
     if (multipleGuests || guest !== 'Pessoa 1') {
-      itemsHtml += `<div style="margin-top: 8px; border-bottom: 1px dashed #000; font-weight: bold; font-size: 14px; padding-bottom: 2px;">👤 ${guest}</div>`;
+      itemsHtml += `<div style="margin-top: 4px; border-bottom: 1px dashed #000; font-weight: bold; font-size: 13px; padding-bottom: 2px;">👤 ${guest}</div>`;
     }
     
     groupedItems[guest].forEach(i => {
       itemsHtml += `
-        <div style="display: flex; justify-content: space-between; margin-bottom: 2px; margin-top: 4px; font-size: 13px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 1px; margin-top: 2px; font-size: 12px;">
           <span style="font-weight: bold;">${i.qty}x ${i.name}</span>
           ${type === 'customer' ? `<span>${formatMoney(calcItemTotal(i))}</span>` : ''}
         </div>
       `;
       i.subItems?.forEach(sub => {
-        itemsHtml += `<div style="margin-left: 10px; font-size: 12px; color: #333;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
+        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; color: #333;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
       });
       if (i.obs) {
-        itemsHtml += `<div style="margin-left: 10px; font-size: 12px; font-style: italic; font-weight: bold;">Obs: ${i.obs}</div>`;
+        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; font-style: italic; font-weight: bold;">Obs: ${i.obs}</div>`;
       }
     });
   });
@@ -200,29 +200,30 @@ const handlePrint = (order, settings, type = 'customer') => {
       <head>
         <title>${type === 'customer' ? 'Recibo' : 'Ticket Cozinha'}</title>
         <style>
-          @page { margin: 0; size: 80mm auto; }
-          body { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; padding: 10px 10px 20px 10px; color: #000; line-height: 1.2; font-size: 13px; }
-          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-          .footer { text-align: center; border-top: 1px dashed #000; padding-top: 10px; margin-top: 15px; font-size: 12px; }
+          @page { margin: 0; } /* Deixa o driver da impressora cortar onde o conteúdo termina */
+          html, body { margin: 0; padding: 0; background: #fff; height: fit-content; }
+          body { font-family: 'Courier New', Courier, monospace; width: 76mm; padding: 2mm 2mm 5mm 2mm; color: #000; line-height: 1.1; font-size: 12px; }
+          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
+          .footer { text-align: center; border-top: 1px dashed #000; padding-top: 4px; margin-top: 6px; font-size: 10px; padding-bottom: 8mm; }
           .bold { font-weight: bold; }
-          .total-box { border-top: 1px dashed #000; margin-top: 10px; padding-top: 8px; }
-          .flex-between { display: flex; justify-content: space-between; margin-bottom: 3px; }
-          .text-lg { font-size: 16px; }
+          .total-box { border-top: 1px dashed #000; margin-top: 6px; padding-top: 4px; }
+          .flex-between { display: flex; justify-content: space-between; margin-bottom: 2px; }
+          .text-lg { font-size: 14px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h2 style="margin: 0; font-size: 18px;">${storeName}</h2>
-          ${type === 'customer' ? `<p style="margin: 4px 0 0 0; font-size: 12px;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<h2 style="margin: 5px 0 0 0;">TICKET DE COZINHA</h2>'}
+          <h2 style="margin: 0; font-size: 16px;">${storeName}</h2>
+          ${type === 'customer' ? `<p style="margin: 2px 0 0 0; font-size: 11px;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<h2 style="margin: 2px 0 0 0;">TICKET COZINHA</h2>'}
         </div>
         
-        <div style="margin-bottom: 10px; font-size: 13px;">
+        <div style="margin-bottom: 6px; font-size: 12px;">
           <div class="flex-between"><span class="bold">Pedido:</span> <span>#${order.id || 'N/A'}</span></div>
           <div class="flex-between"><span class="bold">Cliente:</span> <span>${order.client}</span></div>
           <div class="flex-between"><span class="bold">Data:</span> <span>${new Date(order.paidAt || order.date).toLocaleString('pt-BR')}</span></div>
         </div>
 
-        <div style="border-top: 1px dashed #000; padding-top: 8px; margin-bottom: 10px;">
+        <div style="border-top: 1px dashed #000; padding-top: 6px; margin-bottom: 6px;">
           ${itemsHtml}
         </div>
 
