@@ -175,66 +175,77 @@ const handlePrint = (order, settings, type = 'customer') => {
 
   guests.forEach(guest => {
     if (multipleGuests || guest !== 'Pessoa 1') {
-      itemsHtml += `<div style="margin-top: 10px; border-bottom: 1px dashed #ccc; font-weight: bold; font-size: 0.95em; padding-bottom: 2px;">👤 ${guest}</div>`;
+      itemsHtml += `<div style="margin-top: 8px; border-bottom: 1px dashed #000; font-weight: bold; font-size: 14px; padding-bottom: 2px;">👤 ${guest}</div>`;
     }
     
     groupedItems[guest].forEach(i => {
       itemsHtml += `
-        <div style="display: flex; justify-content: space-between; margin-bottom: 4px; margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 2px; margin-top: 4px; font-size: 13px;">
           <span style="font-weight: bold;">${i.qty}x ${i.name}</span>
           ${type === 'customer' ? `<span>${formatMoney(calcItemTotal(i))}</span>` : ''}
         </div>
       `;
       i.subItems?.forEach(sub => {
-        itemsHtml += `<div style="margin-left: 10px; font-size: 0.85em; color: #444;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
+        itemsHtml += `<div style="margin-left: 10px; font-size: 12px; color: #333;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
       });
       if (i.obs) {
-        itemsHtml += `<div style="margin-left: 10px; font-size: 0.85em; font-style: italic; color: #d32f2f;">Obs: ${i.obs}</div>`;
+        itemsHtml += `<div style="margin-left: 10px; font-size: 12px; font-style: italic; font-weight: bold;">Obs: ${i.obs}</div>`;
       }
     });
   });
 
   const content = `
+    <!DOCTYPE html>
     <html>
       <head>
         <title>${type === 'customer' ? 'Recibo' : 'Ticket Cozinha'}</title>
         <style>
-          body { font-family: 'Courier New', monospace; padding: 20px; max-width: 300px; margin: 0 auto; color: #000; line-height: 1.2; }
+          @page { margin: 0; size: 80mm auto; }
+          body { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; padding: 10px 10px 20px 10px; color: #000; line-height: 1.2; font-size: 13px; }
           .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-          .footer { text-align: center; border-top: 1px dashed #000; padding-top: 10px; margin-top: 20px; font-size: 0.8em; }
+          .footer { text-align: center; border-top: 1px dashed #000; padding-top: 10px; margin-top: 15px; font-size: 12px; }
           .bold { font-weight: bold; }
-          .total { font-size: 1.2em; border-top: 1px solid #000; margin-top: 10px; padding-top: 5px; }
+          .total-box { border-top: 1px dashed #000; margin-top: 10px; padding-top: 8px; }
+          .flex-between { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          .text-lg { font-size: 16px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h2 style="margin: 0;">${storeName}</h2>
-          ${type === 'customer' ? `<p style="margin: 2px 0;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<p style="margin: 2px 0; font-weight: bold;">TICKET DE PRODUÇÃO</p>'}
+          <h2 style="margin: 0; font-size: 18px;">${storeName}</h2>
+          ${type === 'customer' ? `<p style="margin: 4px 0 0 0; font-size: 12px;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<h2 style="margin: 5px 0 0 0;">TICKET DE COZINHA</h2>'}
         </div>
         
-        <div style="margin-bottom: 10px;">
-          <p style="margin: 2px 0;">ID: #${order.id || 'N/A'}</p>
-          <p style="margin: 2px 0;">Cliente: <span class="bold">${order.client}</span></p>
-          <p style="margin: 2px 0;">Data/Hora: ${new Date(order.paidAt || order.date).toLocaleString('pt-BR')}</p>
+        <div style="margin-bottom: 10px; font-size: 13px;">
+          <div class="flex-between"><span class="bold">Pedido:</span> <span>#${order.id || 'N/A'}</span></div>
+          <div class="flex-between"><span class="bold">Cliente:</span> <span>${order.client}</span></div>
+          <div class="flex-between"><span class="bold">Data:</span> <span>${new Date(order.paidAt || order.date).toLocaleString('pt-BR')}</span></div>
         </div>
 
-        <div style="border-top: 1px solid #000; padding-top: 8px;">
+        <div style="border-top: 1px dashed #000; padding-top: 8px; margin-bottom: 10px;">
           ${itemsHtml}
         </div>
 
         ${type === 'customer' ? `
-          <div class="total">
-            <div style="display: flex; justify-content: space-between;"><span class="bold">TOTAL:</span><span class="bold">${formatMoney(order.total)}</span></div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.8em; margin-top:4px;"><span>PAGAMENTO:</span><span>${order.method || 'Dinheiro'}</span></div>
-            ${order.receivedValue ? `<div style="display: flex; justify-content: space-between; font-size: 0.8em;"><span>RECEBIDO:</span><span>${formatMoney(order.receivedValue)}</span></div>` : ''}
-            ${order.changeValue ? `<div style="display: flex; justify-content: space-between; font-size: 0.8em;"><span>TROCO:</span><span>${formatMoney(order.changeValue)}</span></div>` : ''}
+          <div class="total-box">
+            <div class="flex-between bold text-lg"><span>TOTAL:</span><span>${formatMoney(order.total)}</span></div>
+            <div class="flex-between mt-2"><span>PAGAMENTO:</span><span>${order.method || 'Dinheiro'}</span></div>
+            ${order.receivedValue ? `<div class="flex-between"><span>RECEBIDO:</span><span>${formatMoney(order.receivedValue)}</span></div>` : ''}
+            ${order.changeValue ? `<div class="flex-between"><span>TROCO:</span><span>${formatMoney(order.changeValue)}</span></div>` : ''}
           </div>
         ` : ''}
 
         <div class="footer">
-          <p>Agradecemos a preferência!</p>
+          <p style="margin:0;">${type === 'customer' ? 'Obrigado pela preferência!' : '--- FIM DO PEDIDO ---'}</p>
         </div>
-        <script>window.onload = function() { window.print(); window.close(); }</script>
+        <script>
+          window.onload = function() { 
+            setTimeout(function() {
+              window.print(); 
+              window.close(); 
+            }, 500);
+          }
+        </script>
       </body>
     </html>
   `;
@@ -509,7 +520,7 @@ const CashControl = ({ user, orders }) => {
   if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-blue-600" /></div>;
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 pb-24 md:pb-20 w-full animate-in fade-in">
+    <div className="bg-gray-50 min-h-screen p-4 pb-20 w-full animate-in fade-in">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       <ConfirmDialog isOpen={confirmState.isOpen} message={confirmState.msg} onConfirm={confirmState.action} onCancel={() => setConfirmState({ isOpen: false, msg: '', action: null })} />
       
@@ -664,7 +675,6 @@ const CashControl = ({ user, orders }) => {
 // SISTEMA MOBILE (CLIENTE / GARÇOM)
 // --------------------------------------------------------------------------------
 const MobileView = ({ user, initialRole, onBack, settings }) => {
-// ... (Código do MobileView mantém-se igual) ...
   const [view, setView] = useState('login');
   
   // Dados do Cliente
@@ -930,7 +940,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1><p className="mt-4 text-green-100 text-center">Verifique o seu WhatsApp para concluir o pagamento.</p></div>;
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-24 font-sans max-w-md mx-auto shadow-2xl relative border-x border-slate-200 animate-in fade-in">
+    <div className="min-h-screen bg-slate-100 pb-24 font-sans w-full sm:max-w-md mx-auto sm:shadow-2xl relative sm:border-x border-slate-200 animate-in fade-in">
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-20 shadow-md flex justify-between items-center">
@@ -1106,7 +1116,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       )}
       
       {view === 'menu' && count > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 z-30 max-w-md mx-auto animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-4 left-0 right-0 z-30 w-full sm:max-w-md mx-auto px-4 animate-in slide-in-from-bottom-5">
           <button onClick={() => setView('cart')} className="w-full bg-slate-900 text-white p-4 rounded-2xl shadow-xl flex justify-between items-center hover:bg-slate-800 transition-colors active:scale-95">
             <div className="flex items-center gap-3">
               <div className="bg-white text-slate-900 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">{count}</div>
@@ -1132,7 +1142,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [toast, setToast] = useState(null);
   const [confirmState, setConfirmState] = useState({ isOpen: false, msg: '', action: null });
 
-  // Mobile cart overlay state
   const [showMobileCart, setShowMobileCart] = useState(false);
 
   const [currentGuest, setCurrentGuest] = useState('Pessoa 1');
@@ -1784,7 +1793,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const handleUpdateProduct = async () => { 
     if (!editingProduct || !user) return; 
     try { 
-      const priceNum = parseFloat(editingProduct.price.toString().replace(',', '.'));
+      const priceStr = String(editingProduct.price).replace(',', '.');
+      const priceNum = parseFloat(priceStr);
+      if (isNaN(priceNum)) throw new Error("Preço inválido.");
       await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: priceNum, category: editingProduct.category, stock: editingProduct.stock }); 
       setEditingProduct(null); 
       showToastMsg("Produto atualizado!"); 
@@ -2139,6 +2150,149 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
         {renameModal.show && <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-6 w-full max-w-sm"><input autoFocus value={renameModal.newName} onChange={e=>setRenameModal({...renameModal,newName:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}}} className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome" /><div className="flex gap-2"><button onClick={()=>setRenameModal({show:false,oldName:'',newName:''})} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button><button onClick={()=>{const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button></div></div></div>}
 
+        {/* MODAL DE ADICIONAIS (POS) */}
+        {addonModalConfig.isOpen && addonModalConfig.baseItem && (
+          <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95">
+               <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-3xl">
+                 <div>
+                   <h3 className="font-bold text-xl text-slate-800">Monte: {addonModalConfig.baseItem.name}</h3>
+                   <p className="text-sm font-bold text-blue-600">{formatMoney(addonModalConfig.baseItem.price)}</p>
+                 </div>
+                 <button onClick={() => setAddonModalConfig({isOpen:false, baseItem:null, addons:{}})} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={20}/></button>
+               </div>
+
+               <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                 <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seus adicionais</h4>
+                 {products.filter(p => p.category === 'Adicionais').map(addon => {
+                   const qty = addonModalConfig.addons[addon.id] || 0;
+                   return (
+                     <div key={addon.id} className={`flex justify-between items-center border-2 rounded-2xl p-3 shadow-sm transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/50' : 'bg-white border-slate-100'}`}>
+                       <div>
+                         <div className="font-bold text-slate-800 text-sm">{addon.name}</div>
+                         <div className="text-xs font-bold text-slate-500">+ {formatMoney(addon.price)}</div>
+                       </div>
+                       <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-xl">
+                         <button onClick={() => handleAddonChange(addon.id, -1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-red-500 disabled:opacity-30" disabled={qty === 0}><Minus size={16}/></button>
+                         <span className="font-black text-slate-800 w-4 text-center">{qty}</span>
+                         <button onClick={() => handleAddonChange(addon.id, 1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-green-600"><Plus size={16}/></button>
+                       </div>
+                     </div>
+                   )
+                 })}
+                 {products.filter(p => p.category === 'Adicionais').length === 0 && (
+                   <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum adicional cadastrado.</div>
+                 )}
+               </div>
+
+               <div className="p-6 border-t bg-white rounded-b-3xl">
+                  <button onClick={confirmAddonModal} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-between px-6 items-center">
+                    <span>Confirmar & Adicionar</span>
+                    <span className="bg-indigo-800/50 px-3 py-1 rounded-lg">{formatMoney(calculateModalTotal())}</span>
+                  </button>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL MOVIMENTAÇÃO */}
+        {showCashMovementModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+              <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl text-slate-800">Nova Movimentação</h3><button onClick={() => setShowCashMovementModal(false)} className="hover:bg-slate-100 p-2 rounded-full transition-colors"><X size={20} className="text-slate-500" /></button></div>
+              <div className="flex bg-slate-100 p-1.5 rounded-xl mb-6"><button onClick={() => setMovementType('suprimento')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${movementType === 'suprimento' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Suprimento (Entrada)</button><button onClick={() => setMovementType('sangria')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${movementType === 'sangria' ? 'bg-red-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>Sangria (Saída)</button></div>
+              <div className="mb-4"><label className="text-xs font-bold text-slate-500 uppercase block mb-2">Valor (R$)</label><input type="number" step="0.01" autoFocus value={movementValue} onChange={e => setMovementValue(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl text-xl font-black text-center outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all" placeholder="0.00" /></div>
+              <div className="mb-8"><label className="text-xs font-bold text-slate-500 uppercase block mb-2">Descrição / Motivo</label><input type="text" value={movementDesc} onChange={e => setMovementDesc(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all font-medium" placeholder="Ex: Troco inicial, pagamento fornecedor..." /></div>
+              <button onClick={handleAddCashMovement} className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-xl shadow-indigo-600/20 active:scale-95 text-lg">Confirmar Registro</button>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL EDITAR PRODUTO */}
+        {editingProduct && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
+              <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h3 className="text-xl font-bold text-slate-800">Editar Produto</h3><button onClick={() => setEditingProduct(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button></div>
+              <div className="p-6 space-y-5 bg-white">
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="text" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label>
+                    <input type="text" list="edit-cat-list" value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800 bg-white" placeholder="Categoria" />
+                    <datalist id="edit-cat-list">
+                      {categories.map(c => <option key={c} value={c} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"><label className="block text-xs font-bold text-slate-500 uppercase mb-3 text-center">Quantidade em Estoque</label><div className="flex items-center justify-center gap-4"><button onClick={() => setEditingProduct({ ...editingProduct, stock: Math.max(0, editingProduct.stock - 1) })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-red-500 shadow-sm transition-all active:scale-90"><Minus size={20} /></button><input type="number" value={editingProduct.stock} onChange={(e) => setEditingProduct({ ...editingProduct, stock: parseInt(e.target.value) || 0 })} className="w-24 p-3 border border-slate-300 bg-white rounded-xl focus:border-blue-500 outline-none text-center font-black text-xl" /><button onClick={() => setEditingProduct({ ...editingProduct, stock: editingProduct.stock + 1 })} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-full hover:bg-slate-100 text-green-600 shadow-sm transition-all active:scale-90"><Plus size={20} /></button></div></div>
+                <div className="pt-6 flex gap-3 border-t border-slate-100">
+                  <button onClick={() => confirmDeleteProduct(editingProduct)} className="p-3.5 bg-red-50 text-red-600 font-bold hover:bg-red-100 rounded-xl transition-colors border border-red-100" title="Excluir Produto"><Trash2 size={20} /></button>
+                  <button onClick={() => setEditingProduct(null)} className="flex-1 py-3.5 text-slate-600 bg-slate-100 font-bold hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button>
+                  <button onClick={handleUpdateProduct} className="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95">Salvar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL NOVA ENCOMENDA / EDITAR */}
+        {showOrderModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in zoom-in-95">
+              <div className="p-6 bg-pink-600 text-white flex justify-between items-center"><h3 className="font-bold text-xl flex items-center gap-3"><Cake size={24}/> {editingFutureOrder ? 'Editar Encomenda' : 'Nova Encomenda'}</h3><button onClick={() => setShowOrderModal(false)} className="hover:bg-white/20 p-2 rounded-full transition-colors"><X size={24} /></button></div>
+              <div className="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-5">
+                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome do Cliente</label><input ref={clientRef} value={orderClient} onChange={e => setOrderClient(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, phoneRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold text-slate-800" placeholder="Ex: Maria Silva" autoFocus /></div>
+                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Telefone</label><input ref={phoneRef} value={orderPhone} onChange={e => setOrderPhone(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, dateRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" placeholder="(00) 00000-0000" /></div><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Data de Entrega</label><input ref={dateRef} type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, timeRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" /></div></div>
+                <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Horário</label><input ref={timeRef} type="time" value={orderTime} onChange={e => setOrderTime(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, totalRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all" /></div><div><label className="block text-xs font-black text-pink-700 uppercase mb-2">Valor Total (R$)</label><input ref={totalRef} type="number" step="0.01" value={orderTotalValue} onChange={e => setOrderTotalValue(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, obsRef)} className="w-full p-3.5 border-2 border-pink-300 bg-pink-50 rounded-xl outline-none focus:border-pink-600 focus:ring-2 focus:ring-pink-200 transition-all font-black text-pink-700 text-lg" placeholder="0.00" /></div></div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex justify-between items-center">
+                    Detalhes da Produção
+                    <button onClick={handleImproveDescription} disabled={isAiLoading} className="text-pink-600 hover:text-pink-800 flex items-center gap-1.5 text-xs font-bold bg-pink-100 px-3 py-1 rounded-full hover:bg-pink-200 disabled:opacity-50 transition-colors">
+                      {isAiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} Melhorar com IA
+                    </button>
+                  </label>
+                  <textarea ref={obsRef} value={orderObs} onChange={e => setOrderObs(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalRef)} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all h-32 resize-none text-sm" placeholder="Ex: Bolo massa de chocolate, recheio de brigadeiro com morango, cobertura de chantininho. Tema: Festa Infantil (Homem-Aranha). Escrever Parabéns João..." />
+                </div>
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><div className="flex justify-between items-center mb-4"><label className="block text-sm font-black text-slate-700 uppercase">Sinal (Adiantamento)</label><span className="text-sm font-black text-pink-600 bg-pink-50 px-3 py-1 rounded-lg">Falta Receber: {formatMoney((parseFloat(orderTotalValue) || 0) - (parseFloat(orderSignal) || 0))}</span></div><div className="grid grid-cols-2 gap-4"><input ref={signalRef} type="number" step="0.01" value={orderSignal} onChange={e => setOrderSignal(e.target.value)} onKeyDown={e => handleOrderKeyDown(e, signalMethodRef)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all font-bold" placeholder="Valor Pago R$" /><select ref={signalMethodRef} value={orderSignalMethod} onChange={e => setOrderSignalMethod(e.target.value)} className="w-full p-3.5 border border-slate-300 rounded-xl outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-100 transition-all bg-white font-bold"><option value="Pix">Pix</option><option value="Dinheiro">Dinheiro</option><option value="Cartão">Cartão</option></select></div></div>
+              </div>
+              <div className="p-5 bg-white border-t border-slate-200 flex justify-end gap-3"><button onClick={() => setShowOrderModal(false)} className="px-6 py-3.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Cancelar</button><button onClick={saveFutureOrder} className="px-10 py-3.5 rounded-xl font-black bg-pink-600 text-white hover:bg-pink-700 shadow-lg shadow-pink-600/30 transition-all active:scale-95 text-lg">Salvar Encomenda</button></div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE FINALIZAR ENTREGA (ENCOMENDA) */}
+        {selectedFutureOrder && (
+          <div className="fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95">
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center"><h3 className="font-bold text-xl">Finalizar Entrega</h3><button onClick={() => setSelectedFutureOrder(null)}><X/></button></div>
+              <div className="p-6 space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">Cliente</p>
+                  <p className="font-bold text-slate-800">{selectedFutureOrder.client}</p>
+                </div>
+                <div className="bg-indigo-50 p-5 rounded-2xl flex justify-between items-center border border-indigo-100">
+                  <span className="font-bold text-indigo-900">Restante a Receber</span>
+                  <span className="text-2xl font-black text-indigo-600">{formatMoney(selectedFutureOrder.total - selectedFutureOrder.signal)}</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Valor Recebido (R$)</label>
+                  <input type="number" step="0.01" value={settleValue} onChange={e => setSettleValue(e.target.value)} className="w-full p-4 border rounded-2xl text-xl font-black outline-none focus:border-indigo-500" placeholder="0.00" autoFocus />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Método de Pagamento</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Pix', 'Dinheiro', 'Cartão'].map(m => (
+                      <button key={m} onClick={() => setSettleMethod(m)} className={`py-3 rounded-xl font-bold border transition-colors ${settleMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{m}</button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={handleSettleOrder} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg active:scale-95 transition-all mt-4">Confirmar e Entregar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* VIEWS */}
         {view === 'pos' && (
           <div className="flex h-[calc(100vh-4rem)] md:h-screen relative">
@@ -2146,7 +2300,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <h1 className="text-2xl font-bold mb-6">Novo Pedido (Balcão)</h1>
               <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl"><div className="flex gap-2 mb-3"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18} /><input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none" /></div></div><div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">{categories.map(c => <button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory===c?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{c}</button>)}</div></div>
               <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar"><Users size={18} className="text-slate-400 mr-1 shrink-0" />{guestList.map(g => (<div key={g} className={`flex items-center rounded-full border shrink-0 ${currentGuest===g?'bg-indigo-600 text-white':'bg-slate-50 text-slate-600'}`}><button onClick={()=>setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold">{g}</button>{currentGuest===g && <button onClick={()=>setRenameModal({show:true,oldName:g,newName:g})} className="pr-3 pl-1 py-1.5"><Edit3 size={12}/></button>}</div>))}<button onClick={()=>{const nG=`Pessoa ${guestList.length+1}`;setGuestList([...guestList,nG]);setCurrentGuest(nG);}} className="px-4 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-slate-400 flex items-center gap-1 shrink-0"><Plus size={12}/> Add Pessoa</button></div>
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-24">
                 {filtered.map(p => (
                   <button key={p.id} onClick={()=>addToCart(p)} disabled={p.stock<=0} className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-col text-left active:scale-95 ${p.stock<=0?'opacity-50':''}`}><div className="flex justify-between items-center mb-3 w-full"><div className="bg-blue-50 p-2 rounded-lg"><IconMapper type={p.icon} className="w-5 h-5 text-blue-600" /></div><span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg">{formatMoney(p.price)}</span></div><div className="font-bold text-slate-800 leading-tight mb-1">{p.name}</div><div className="text-xs font-bold text-slate-400">{p.stock} un</div></button>
                 ))}
@@ -2194,51 +2348,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
                  </button>
                </div>
             )}
-          </div>
-        )}
-
-        {/* MODAL DE ADICIONAIS (POS) */}
-        {addonModalConfig.isOpen && addonModalConfig.baseItem && (
-          <div className="fixed inset-0 bg-black/60 z-[300] flex items-end md:items-center justify-center p-0 md:p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom-full md:zoom-in-95">
-               <div className="p-5 md:p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-3xl md:rounded-t-3xl">
-                 <div>
-                   <h3 className="font-bold text-xl text-slate-800">Monte: {addonModalConfig.baseItem.name}</h3>
-                   <p className="text-sm font-bold text-blue-600">{formatMoney(addonModalConfig.baseItem.price)}</p>
-                 </div>
-                 <button onClick={() => setAddonModalConfig({isOpen:false, baseItem:null, addons:{}})} className="p-2 hover:bg-slate-200 rounded-full text-slate-500"><X size={20}/></button>
-               </div>
-
-               <div className="flex-1 overflow-y-auto p-5 md:p-6 space-y-3">
-                 <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seus adicionais</h4>
-                 {products.filter(p => p.category === 'Adicionais').map(addon => {
-                   const qty = addonModalConfig.addons[addon.id] || 0;
-                   return (
-                     <div key={addon.id} className={`flex justify-between items-center border-2 rounded-2xl p-3 shadow-sm transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/50' : 'bg-white border-slate-100'}`}>
-                       <div>
-                         <div className="font-bold text-slate-800 text-sm">{addon.name}</div>
-                         <div className="text-xs font-bold text-slate-500">+ {formatMoney(addon.price)}</div>
-                       </div>
-                       <div className="flex items-center gap-3 bg-slate-100 p-1 rounded-xl">
-                         <button onClick={() => handleAddonChange(addon.id, -1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-red-500 disabled:opacity-30" disabled={qty === 0}><Minus size={16}/></button>
-                         <span className="font-black text-slate-800 w-4 text-center">{qty}</span>
-                         <button onClick={() => handleAddonChange(addon.id, 1)} className="w-8 h-8 flex items-center justify-center bg-white text-slate-600 rounded-lg shadow-sm hover:text-green-600"><Plus size={16}/></button>
-                       </div>
-                     </div>
-                   )
-                 })}
-                 {products.filter(p => p.category === 'Adicionais').length === 0 && (
-                   <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum adicional cadastrado.</div>
-                 )}
-               </div>
-
-               <div className="p-5 md:p-6 border-t bg-white rounded-b-3xl md:rounded-b-3xl">
-                  <button onClick={confirmAddonModal} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-indigo-700 active:scale-95 transition-all flex justify-between px-6 items-center">
-                    <span>Confirmar & Adicionar</span>
-                    <span className="bg-indigo-800/50 px-3 py-1 rounded-lg">{formatMoney(calculateModalTotal())}</span>
-                  </button>
-               </div>
-            </div>
           </div>
         )}
 
@@ -2482,6 +2591,36 @@ const PosView = ({ user, onBack, initialSettings }) => {
           </div>
         )}
 
+        {view === 'history' && (
+          <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
+            <h1 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-slate-800 flex items-center gap-3"><History size={32} className="text-indigo-600" /> Histórico de Vendas</h1>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
+              <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
+              </div>
+            </div>
+            <div className="space-y-4">
+              {historyOrders.map(order => (
+                <div key={order.id} className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <div className="font-bold text-base md:text-lg text-slate-800">{order.client}</div>
+                    <div className="text-xs md:text-sm text-slate-500">{new Date(order.paidAt || order.date).toLocaleString('pt-BR')} • {order.method}</div>
+                  </div>
+                  <div className="text-left md:text-right w-full md:w-auto flex justify-between md:block items-center">
+                    <div className="font-black text-lg md:text-xl text-blue-600">{formatMoney(order.total)}</div>
+                    <button onClick={() => handlePrint(order, settings, 'customer')} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1"><Printer size={14}/> Recibo</button>
+                  </div>
+                </div>
+              ))}
+              {historyOrders.length === 0 && <div className="text-center text-slate-500 py-10 font-medium">Nenhuma venda encontrada.</div>}
+            </div>
+          </div>
+        )}
+
+        {view === 'cash' && <CashControl user={user} orders={orders} />}
+
         {view === 'settings' && (
           <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
             <header className="mb-6 md:mb-8 flex justify-between items-center">
@@ -2531,36 +2670,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
           </div>
         )}
-
-        {/* ABA HISTÓRICO RESTAURADA */}
-        {view === 'history' && (
-          <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
-            <h1 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-slate-800 flex items-center gap-3"><History size={32} className="text-indigo-600" /> Histórico de Vendas</h1>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
-              <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
-                <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
-              </div>
-            </div>
-            <div className="space-y-4">
-              {historyOrders.map(order => (
-                <div key={order.id} className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <div className="font-bold text-base md:text-lg text-slate-800">{order.client}</div>
-                    <div className="text-xs md:text-sm text-slate-500">{new Date(order.paidAt || order.date).toLocaleString('pt-BR')} • {order.method}</div>
-                  </div>
-                  <div className="text-left md:text-right w-full md:w-auto flex justify-between md:block items-center">
-                    <div className="font-black text-lg md:text-xl text-blue-600">{formatMoney(order.total)}</div>
-                    <button onClick={() => handlePrint(order, settings, 'customer')} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1"><Printer size={14}/> Recibo</button>
-                  </div>
-                </div>
-              ))}
-              {historyOrders.length === 0 && <div className="text-center text-slate-500 py-10 font-medium">Nenhuma venda encontrada.</div>}
-            </div>
-          </div>
-        )}
-
       </div>
     </div>
   );
@@ -2593,6 +2702,16 @@ export default function App() {
   };
 
   useEffect(() => {
+    // --- CORREÇÃO DE TELA ESTICADA NO MOBILE ---
+    let viewport = document.querySelector("meta[name=viewport]");
+    if (!viewport) {
+        viewport = document.createElement("meta");
+        viewport.name = "viewport";
+        document.head.appendChild(viewport);
+    }
+    viewport.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
+    // -------------------------------------------
+
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
