@@ -1201,6 +1201,9 @@ const PosView = ({ user, onBack, initialSettings }) => {
   
   const [showDeleteAuthModal, setShowDeleteAuthModal] = useState(false);
   const [deletePasswordInput, setDeletePasswordInput] = useState('');
+  const [deleteSingleOrderModal, setDeleteSingleOrderModal] = useState({ isOpen: false, orderId: null, orderFsId: null });
+  const [deleteSinglePasswordInput, setDeleteSinglePasswordInput] = useState('');
+  const [deleteSinglePasswordError, setDeleteSinglePasswordError] = useState('');
 
   const [configForm, setConfigForm] = useState({
     ...initialSettings,
@@ -1645,6 +1648,36 @@ const PosView = ({ user, onBack, initialSettings }) => {
     setDeletePasswordInput('');
   };
 
+  const handleDeleteSingleOrder = (order) => {
+    setDeleteSinglePasswordInput('');
+    setDeleteSinglePasswordError('');
+    setDeleteSingleOrderModal({ isOpen: true, orderId: order.id, orderFsId: order.firestoreId });
+  };
+
+  const confirmDeleteSingleOrder = async () => {
+    const currentPass = settings?.posPassword || '1234';
+    if (deleteSinglePasswordInput.trim() !== currentPass.trim()) {
+      setDeleteSinglePasswordError('Senha incorreta.');
+      return;
+    }
+    const { orderFsId, orderId } = deleteSingleOrderModal;
+    setDeleteSingleOrderModal({ isOpen: false, orderId: null, orderFsId: null });
+    setConfirmState({
+      isOpen: true,
+      msg: `Excluir o pedido #${orderId} permanentemente? Esta ação não pode ser desfeita.`,
+      action: async () => {
+        try {
+          await deleteDoc(getDocRef('orders', orderFsId));
+          setConfirmState({ isOpen: false, msg: '', action: null });
+          showToastMsg('Pedido excluído com sucesso!', 'success');
+        } catch (e) {
+          setConfirmState({ isOpen: false, msg: '', action: null });
+          showToastMsg('Erro ao excluir pedido.', 'error');
+        }
+      }
+    });
+  };
+
   const confirmClearHistory = async () => {
     const currentPass = settings?.settingsPassword || '1234';
     if (deletePasswordInput === currentPass) {
@@ -2002,6 +2035,41 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
         {showDeleteAuthModal && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertTriangle size={48}/></div><h3 className="text-xl font-bold mb-2 text-center">Apagar Vendas</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação apagará permanentemente todos os pedidos finalizados. Necessita senha de Configurações.</p><input type="password" autoFocus placeholder="Senha de Configuração" className="w-full border p-3 text-center mb-4 rounded-xl" value={deletePasswordInput} onChange={e=>setDeletePasswordInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&confirmClearHistory()} /><div className="flex gap-2"><button onClick={()=>{setShowDeleteAuthModal(false);setDeletePasswordInput('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={confirmClearHistory} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
+        )}
+
+        {deleteSingleOrderModal.isOpen && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-t-4 border-red-600 animate-in zoom-in-95">
+              <div className="flex justify-center mb-4">
+                <div className="bg-red-50 p-4 rounded-full text-red-600"><Lock size={36} /></div>
+              </div>
+              <h3 className="text-xl font-black text-slate-800 mb-1 text-center">Confirmar Exclusão</h3>
+              <p className="text-sm text-slate-500 mb-2 text-center">Pedido <span className="font-bold text-slate-800">#{deleteSingleOrderModal.orderId}</span></p>
+              <p className="text-xs text-slate-400 mb-5 text-center">Digite a senha do gerente para continuar.</p>
+              <input
+                type="password"
+                autoFocus
+                placeholder="Senha do gerente"
+                className="w-full border-2 p-4 rounded-xl text-center text-xl font-bold outline-none focus:border-red-500 transition-all mb-2"
+                value={deleteSinglePasswordInput}
+                onChange={(e) => { setDeleteSinglePasswordInput(e.target.value); setDeleteSinglePasswordError(''); }}
+                onKeyDown={(e) => e.key === 'Enter' && confirmDeleteSingleOrder()}
+              />
+              {deleteSinglePasswordError && (
+                <p className="text-red-500 text-sm font-bold text-center mb-2">{deleteSinglePasswordError}</p>
+              )}
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setDeleteSingleOrderModal({ isOpen: false, orderId: null, orderFsId: null })}
+                  className="flex-1 py-3.5 text-slate-500 bg-slate-100 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                >Cancelar</button>
+                <button
+                  onClick={confirmDeleteSingleOrder}
+                  className="flex-1 bg-red-600 text-white py-3.5 rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-500/20"
+                >Confirmar</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* MODAL EDIÇÃO SEGURA DE COMANDA */}
@@ -2611,7 +2679,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   </div>
                   <div className="text-left md:text-right w-full md:w-auto flex justify-between md:block items-center">
                     <div className="font-black text-lg md:text-xl text-blue-600">{formatMoney(order.total)}</div>
-                    <button onClick={() => handlePrint(order, settings, 'customer')} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1"><Printer size={14}/> Recibo</button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => handlePrint(order, settings, 'customer')} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1"><Printer size={14}/> Recibo</button>
+                      <button onClick={() => handleDeleteSingleOrder(order)} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1" title="Excluir pedido"><Trash2 size={14}/></button>
+                    </div>
                   </div>
                 </div>
               ))}
