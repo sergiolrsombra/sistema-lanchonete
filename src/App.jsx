@@ -1,4 +1,3 @@
-```react
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ShoppingCart, User, ChevronLeft, Minus, Plus,
@@ -1565,3 +1564,4 @@ export default function App() {
     </>
   );
 }
+
