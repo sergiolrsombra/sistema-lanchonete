@@ -180,13 +180,13 @@ const handlePrint = (order, settings, type = 'customer') => {
     
     groupedItems[guest].forEach(i => {
       itemsHtml += `
-        <div style="display: flex; justify-content: space-between; margin-bottom: 1px; margin-top: 2px; font-size: 12px;">
-          <span style="font-weight: bold;">${i.qty}x ${i.name}</span>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 1px; margin-top: 2px; font-size: 12px; font-weight: 900;">
+          <span style="font-weight: 900;">${i.qty}x ${i.name}</span>
           ${type === 'customer' ? `<span>${formatMoney(calcItemTotal(i))}</span>` : ''}
         </div>
       `;
       i.subItems?.forEach(sub => {
-        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; color: #333;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
+        itemsHtml += `<div style="margin-left: 8px; font-size: 11px; color: #000; font-weight: 900;">+ ${sub.qty * i.qty}x ${sub.name}</div>`;
       });
       if (i.obs) {
         itemsHtml += `<div style="margin-left: 8px; font-size: 11px; font-style: italic; font-weight: bold;">Obs: ${i.obs}</div>`;
@@ -202,18 +202,18 @@ const handlePrint = (order, settings, type = 'customer') => {
         <style>
           @page { margin: 0; } /* Deixa o driver da impressora cortar onde o conteúdo termina */
           html, body { margin: 0; padding: 0; background: #fff; height: fit-content; }
-          body { font-family: 'Courier New', Courier, monospace; width: 76mm; padding: 2mm 2mm 5mm 2mm; color: #000; line-height: 1.1; font-size: 12px; }
-          .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
-          .footer { text-align: center; border-top: 1px dashed #000; padding-top: 4px; margin-top: 6px; font-size: 10px; padding-bottom: 8mm; }
-          .bold { font-weight: bold; }
-          .total-box { border-top: 1px dashed #000; margin-top: 6px; padding-top: 4px; }
+          body { font-family: Arial, Helvetica, sans-serif; width: 76mm; padding: 2mm 2mm 5mm 2mm; color: #000 !important; line-height: 1.2; font-size: 12px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
+          .footer { text-align: center; border-top: 2px dashed #000; padding-top: 4px; margin-top: 6px; font-size: 11px; padding-bottom: 8mm; font-weight: 700; }
+          .bold { font-weight: 900; }
+          .total-box { border-top: 2px solid #000; margin-top: 6px; padding-top: 4px; }
           .flex-between { display: flex; justify-content: space-between; margin-bottom: 2px; }
-          .text-lg { font-size: 14px; }
+          .text-lg { font-size: 15px; font-weight: 900; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h2 style="margin: 0; font-size: 16px;">${storeName}</h2>
+          <h2 style="margin: 0; font-size: 18px; font-weight: 900;">${storeName}</h2>
           ${type === 'customer' ? `<p style="margin: 2px 0 0 0; font-size: 11px;">${storeAddress}<br/>Tel: ${storePhone}</p>` : '<h2 style="margin: 2px 0 0 0;">TICKET COZINHA</h2>'}
         </div>
         
@@ -2401,7 +2401,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     );
                   })}
                 </div>
-                <div className="p-5 border-t bg-slate-50 mt-auto"><div className="flex justify-between mb-4 items-center"><span className="font-bold uppercase text-sm">Total</span><span className="text-3xl font-black text-blue-600">{formatMoney(cartTotal)}</span></div><div className="flex flex-col gap-3">{customerName && <button onClick={()=>finalizeOrder(customerName, 'ABERTO')} disabled={cart.length===0} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex justify-center gap-2 disabled:opacity-50"><ListPlus size={18}/> Lançar Comanda</button>}<button onClick={()=>{if(cart.length>0){setSelectedTabToSettle(null);setPartialPayments([]);setPaymentInputValue('');setPayingGuest('Mesa Completa');setShowPaymentModal(true);}}} disabled={cart.length===0} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50">COBRAR AGORA</button></div></div>
+                <div className="p-5 border-t bg-slate-50 mt-auto"><div className="flex justify-between mb-4 items-center"><span className="font-bold uppercase text-sm">Total</span><span className="text-3xl font-black text-blue-600">{formatMoney(cartTotal)}</span></div><div className="flex flex-col gap-3">{customerName && <button onClick={()=>finalizeOrder(customerName, 'ABERTO')} disabled={cart.length===0} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold flex justify-center gap-2 disabled:opacity-50"><ListPlus size={18}/> Lançar Comanda</button>}<button onClick={()=>{ if(cart.length>0){ const fakeOrder = { id: 'ATUAL', client: customerName || 'Balcão', items: cart, total: cartTotal, date: new Date().toISOString(), paidAt: null }; handlePrint(fakeOrder, settings, 'kitchen'); }}} disabled={cart.length===0} className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold flex justify-center gap-2 disabled:opacity-50 transition-colors"><Printer size={18}/> Imprimir Cozinha</button><button onClick={()=>{if(cart.length>0){setSelectedTabToSettle(null);setPartialPayments([]);setPaymentInputValue('');setPayingGuest('Mesa Completa');setShowPaymentModal(true);}}} disabled={cart.length===0} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg disabled:opacity-50">COBRAR AGORA</button></div></div>
               </div>
             </div>
 
