@@ -1146,6 +1146,317 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   );
 };
 
+// --------------------------------------------------------------------------------
+// COMPONENTE: PAINEL ADMINISTRATIVO (POS)
+// --------------------------------------------------------------------------------
+const PosView = ({ user, initialRole, onBack, initialSettings }) => {
+  const [activeTab, setActiveTab] = useState('caixa');
+  const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [settings, setSettings] = useState(initialSettings || {});
+  const [toast, setToast] = useState(null);
+  const [confirmState, setConfirmState] = useState({ isOpen: false, msg: '', action: null });
+
+  // --- Estado do modal de senha de gerência para deletar pedido ---
+  const [deleteAuthModal, setDeleteAuthModal] = useState({ isOpen: false, orderId: null, orderFsId: null });
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+  const [deletePasswordError, setDeletePasswordError] = useState('');
+
+  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
+      setOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })));
+    });
+    const unsubProducts = onSnapshot(query(getCollectionRef('products')), (snap) => {
+      setProducts(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })));
+    });
+    const unsubSettings = onSnapshot(getDocRef('app_state', 'settings'), (snap) => {
+      if (snap.exists()) setSettings(snap.data());
+    });
+    return () => { unsubOrders(); unsubProducts(); unsubSettings(); };
+  }, [user]);
+
+  // Pedidos pagos ordenados do mais recente para o mais antigo
+  const paidOrders = useMemo(() =>
+    orders
+      .filter(o => o.paymentStatus === 'PAGO')
+      .sort((a, b) => new Date(b.paidAt || b.date) - new Date(a.paidAt || a.date)),
+    [orders]
+  );
+
+  // Abre o modal pedindo senha antes de deletar
+  const handleDeleteOrderClick = (order) => {
+    setDeletePasswordInput('');
+    setDeletePasswordError('');
+    setDeleteAuthModal({ isOpen: true, orderId: order.id, orderFsId: order.firestoreId });
+  };
+
+  // Valida a senha e, se correta, abre o ConfirmDialog
+  const handleDeletePasswordConfirm = () => {
+    const currentPass = settings?.posPassword || '1234';
+    if (deletePasswordInput.trim() !== currentPass.trim()) {
+      setDeletePasswordError('Senha incorreta.');
+      return;
+    }
+    const { orderFsId, orderId } = deleteAuthModal;
+    setDeleteAuthModal({ isOpen: false, orderId: null, orderFsId: null });
+    setConfirmState({
+      isOpen: true,
+      msg: `Excluir o pedido #${orderId} permanentemente? Esta ação não pode ser desfeita.`,
+      action: async () => {
+        try {
+          await deleteDoc(getDocRef('orders', orderFsId));
+          setConfirmState({ isOpen: false, msg: '', action: null });
+          showToast('Pedido excluído com sucesso!', 'success');
+        } catch (e) {
+          setConfirmState({ isOpen: false, msg: '', action: null });
+          showToast('Erro ao excluir pedido.', 'error');
+        }
+      }
+    });
+  };
+
+  const tabs = [
+    { id: 'caixa', label: 'Caixa', icon: <ShoppingCart size={16} /> },
+    { id: 'historico', label: 'Histórico', icon: <History size={16} /> },
+    { id: 'estoque', label: 'Estoque', icon: <Package size={16} /> },
+    { id: 'fluxo', label: 'Fluxo', icon: <TrendingUp size={16} /> },
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-100 font-sans">
+      {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      <ConfirmDialog
+        isOpen={confirmState.isOpen}
+        message={confirmState.msg}
+        onConfirm={confirmState.action}
+        onCancel={() => setConfirmState({ isOpen: false, msg: '', action: null })}
+      />
+
+      {/* MODAL DE SENHA PARA DELETAR */}
+      {deleteAuthModal.isOpen && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border-t-4 border-red-600 animate-in zoom-in-95">
+            <div className="flex justify-center mb-4">
+              <div className="bg-red-50 p-4 rounded-full text-red-600"><Lock size={36} /></div>
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-1 text-center">Confirmar Exclusão</h3>
+            <p className="text-sm text-slate-500 mb-2 text-center">Pedido <span className="font-bold text-slate-800">#{deleteAuthModal.orderId}</span></p>
+            <p className="text-xs text-slate-400 mb-5 text-center">Digite a senha de gerência para continuar.</p>
+            <input
+              type="password"
+              autoFocus
+              placeholder="Senha de gerência"
+              className="w-full border-2 p-4 rounded-xl text-center text-xl font-bold outline-none focus:border-red-500 transition-all mb-2"
+              value={deletePasswordInput}
+              onChange={(e) => { setDeletePasswordInput(e.target.value); setDeletePasswordError(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleDeletePasswordConfirm()}
+            />
+            {deletePasswordError && (
+              <p className="text-red-500 text-sm font-bold text-center mb-2">{deletePasswordError}</p>
+            )}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setDeleteAuthModal({ isOpen: false, orderId: null, orderFsId: null })}
+                className="flex-1 py-3.5 text-slate-500 bg-slate-100 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeletePasswordConfirm}
+                className="flex-1 bg-red-600 text-white py-3.5 rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-500/20"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div className="bg-slate-900 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-20">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1.5 hover:bg-slate-800 rounded-full transition-colors"><ChevronLeft size={20} /></button>
+          <div>
+            <div className="font-black text-sm leading-tight">{settings?.storeName || 'Painel'}</div>
+            <div className="text-xs text-slate-400">{initialRole}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-300">{new Date().toLocaleDateString('pt-BR')}</div>
+        </div>
+      </div>
+
+      {/* TABS */}
+      <div className="bg-white border-b shadow-sm px-4 overflow-x-auto">
+        <div className="flex gap-1 hide-scrollbar min-w-max">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-3.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4 max-w-5xl mx-auto pb-20">
+
+        {/* ABA: CAIXA (pedidos abertos) */}
+        {activeTab === 'caixa' && (
+          <div className="space-y-3 animate-in fade-in">
+            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Pedidos em Aberto</h2>
+            {orders.filter(o => o.paymentStatus === 'ABERTO').length === 0 && (
+              <div className="bg-white rounded-2xl p-10 text-center text-slate-400 font-medium shadow-sm border">Nenhum pedido em aberto.</div>
+            )}
+            {orders.filter(o => o.paymentStatus === 'ABERTO').sort((a, b) => new Date(a.date) - new Date(b.date)).map(order => (
+              <div key={order.firestoreId} className="bg-white rounded-2xl shadow-sm border p-4">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <span className="font-black text-slate-800 text-lg">#{order.id}</span>
+                    <span className="ml-2 font-bold text-slate-600">{order.client}</span>
+                  </div>
+                  <span className="text-xs bg-amber-100 text-amber-700 font-bold px-2 py-1 rounded-full">{order.orderType || 'Local'}</span>
+                </div>
+                <div className="space-y-1 mb-3">
+                  {order.items?.map((item, idx) => (
+                    <div key={idx} className="text-sm text-slate-600 flex justify-between">
+                      <span>{item.qty}x {item.name}</span>
+                      <span className="font-medium">{formatMoney(calcItemTotal(item))}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center border-t pt-3">
+                  <span className="font-black text-blue-700 text-lg">{formatMoney(order.total)}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => handlePrint(order, settings, 'kitchen')} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors" title="Imprimir cozinha"><Printer size={16} /></button>
+                    <button
+                      onClick={async () => {
+                        await updateDoc(getDocRef('orders', order.firestoreId), { paymentStatus: 'PAGO', paidAt: new Date().toISOString() });
+                        showToast('Pedido marcado como pago!');
+                      }}
+                      className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                    >
+                      Marcar Pago
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ABA: HISTÓRICO DE VENDAS */}
+        {activeTab === 'historico' && (
+          <div className="animate-in fade-in">
+            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <History size={20} className="text-blue-600" /> Histórico de Vendas
+              <span className="ml-auto text-sm font-medium text-slate-400">{paidOrders.length} pedido(s)</span>
+            </h2>
+
+            {paidOrders.length === 0 && (
+              <div className="bg-white rounded-2xl p-10 text-center text-slate-400 font-medium shadow-sm border">Nenhuma venda registrada.</div>
+            )}
+
+            <div className="space-y-3">
+              {paidOrders.map(order => (
+                <div key={order.firestoreId} className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+                  {/* Cabeçalho do pedido */}
+                  <div className="flex items-center justify-between p-4 border-b bg-slate-50">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-green-100 text-green-700 p-2 rounded-xl">
+                        <CheckCircle2 size={18} />
+                      </div>
+                      <div>
+                        <div className="font-black text-slate-800">#{order.id} — {order.client}</div>
+                        <div className="text-xs text-slate-500 font-medium">
+                          {order.paidAt
+                            ? new Date(order.paidAt).toLocaleString('pt-BR')
+                            : formatDate(order.date)}
+                          {order.method && <span className="ml-2 bg-slate-200 px-1.5 py-0.5 rounded text-slate-600">{order.method}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-green-700 text-lg">{formatMoney(order.total)}</span>
+                      {/* BOTÃO DE DELETAR — só para pedidos PAGO */}
+                      <button
+                        onClick={() => handleDeleteOrderClick(order)}
+                        className="p-2 bg-red-50 text-red-400 rounded-xl hover:bg-red-100 hover:text-red-600 transition-all active:scale-95"
+                        title="Excluir pedido (requer senha de gerência)"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Itens */}
+                  <div className="p-4 space-y-1">
+                    {order.items?.map((item, idx) => (
+                      <div key={idx} className="text-sm text-slate-600 flex justify-between">
+                        <span>{item.qty}x {item.name}</span>
+                        <span className="font-medium text-slate-700">{formatMoney(calcItemTotal(item))}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Rodapé com ações */}
+                  <div className="px-4 pb-4 flex gap-2 justify-end border-t pt-3">
+                    <button onClick={() => handlePrint(order, settings, 'customer')} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200 transition-colors">
+                      <Printer size={14} /> Recibo
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ABA: ESTOQUE */}
+        {activeTab === 'estoque' && (
+          <div className="animate-in fade-in">
+            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Package size={20} className="text-blue-600" /> Estoque de Produtos</h2>
+            <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-slate-500 uppercase border-b">
+                  <tr>
+                    <th className="p-3 text-left">Produto</th>
+                    <th className="p-3 text-left">Categoria</th>
+                    <th className="p-3 text-right">Preço</th>
+                    <th className="p-3 text-right">Estoque</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.sort((a, b) => a.id - b.id).map(p => (
+                    <tr key={p.firestoreId} className="border-b last:border-none hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-medium text-slate-800">{p.name}</td>
+                      <td className="p-3 text-slate-500">{p.category}</td>
+                      <td className="p-3 text-right font-bold text-blue-700">{formatMoney(p.price)}</td>
+                      <td className="p-3 text-right">
+                        <span className={`font-black px-2 py-0.5 rounded-full text-xs ${p.stock <= 5 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                          {p.stock}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ABA: FLUXO DE CAIXA */}
+        {activeTab === 'fluxo' && (
+          <CashControl user={user} orders={orders} />
+        )}
+
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
