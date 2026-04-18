@@ -906,9 +906,9 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
     if (diff < 1) return 'agora';
     if (diff === 1) return 'há 1 min';
-    if (diff < 60) return \`há \${diff} min\`;
+    if (diff < 60) return `há ${diff} min`;
     const h = Math.floor(diff / 60);
-    return \`há \${h}h\${diff % 60 > 0 ? \` \${diff % 60}min\` : ''}\`;
+    return `há ${h}h${diff % 60 > 0 ? ` ${diff % 60}min` : ''}`;
   };
 
   const handleLoginSubmit = (e) => {
