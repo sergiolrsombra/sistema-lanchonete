@@ -2738,6 +2738,58 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhum pedido pendente na cozinha.</div>
               )}
             </div>
+
+            {kitchenExpandedOrder && (
+              <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setKitchenExpandedOrder(null)}>
+                <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                  <div className="bg-orange-500 text-white p-5 flex justify-between items-center">
+                    <div>
+                      <div className="font-black text-xl">{kitchenExpandedOrder.client}</div>
+                      <div className="text-orange-100 text-sm font-bold">Pedido #{String(kitchenExpandedOrder.id).slice(0,4)} • {kitchenExpandedOrder.time}</div>
+                    </div>
+                    <button onClick={() => setKitchenExpandedOrder(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={24}/></button>
+                  </div>
+                  <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+                    {(kitchenExpandedOrder.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || []).map((i, idx) => (
+                      <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="bg-orange-500 text-white font-black text-lg px-3 py-1 rounded-xl">{i.qty}x</span>
+                          <span className="font-black text-slate-800 text-lg">{i.name}</span>
+                          {i.guest && !kitchenExpandedOrder.client?.includes(i.guest) && (
+                            <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded-full ml-auto">{i.guest}</span>
+                          )}
+                        </div>
+                        {i.subItems && i.subItems.length > 0 && (
+                          <div className="pl-4 space-y-1 mt-2">
+                            {i.subItems.map((sub, sIdx) => (
+                              <div key={sIdx} className="text-sm font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl">
+                                + {sub.qty * i.qty}x {sub.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {i.obs && (
+                          <div className="mt-2 text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
+                            ⚠️ OBS: {i.obs}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-5 border-t bg-slate-50 flex gap-3">
+                    <button onClick={() => setKitchenExpandedOrder(null)} className="flex-1 py-3.5 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors">Fechar</button>
+                    <button onClick={() => {
+                      const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                      updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
+                      showToastMsg('Pedido finalizado na cozinha!');
+                      setKitchenExpandedOrder(null);
+                    }} className="flex-1 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl shadow-lg transition-colors active:scale-95 flex items-center justify-center gap-2">
+                      <CheckSquare size={20}/> Marcar Pronto
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2755,10 +2807,31 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
             <div className="space-y-4">{futureOrders.map(order => (
               <div key={order.firestoreId} onClick={() => setSelectedFutureOrder(order)} className="bg-white rounded-2xl p-5 md:p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 hover:shadow-md transition-all relative group">
+                {(() => {
+                  if (order.status === 'Concluído') return null;
+                  const today = new Date(); today.setHours(0,0,0,0);
+                  const delivery = new Date(order.deliveryDate); delivery.setHours(0,0,0,0);
+                  const diffDays = Math.round((delivery - today) / 86400000);
+                  if (diffDays < 0) return <div className="absolute top-4 right-4 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 animate-pulse"><AlertTriangle size={12}/> ATRASADA</div>;
+                  if (diffDays === 0) return <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 animate-pulse"><AlertTriangle size={12}/> HOJE</div>;
+                  if (diffDays === 1) return <div className="absolute top-4 right-4 bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1"><Clock size={12}/> AMANHÃ</div>;
+                  if (diffDays === 2) return <div className="absolute top-4 right-4 bg-amber-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1"><Clock size={12}/> 2 dias</div>;
+                  return null;
+                })()}
                 {order.status === 'Concluído' && <div className="absolute top-4 right-4 text-green-600 bg-green-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 border border-green-100"><CheckCircle2 size={14} /> Entregue</div>}
                 <div className={`flex flex-col items-center justify-center p-4 rounded-xl min-w-[120px] border ${order.status === 'Concluído' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-pink-50 border-pink-100 text-pink-800 shadow-inner'}`}><span className="text-sm font-bold uppercase tracking-wider">{new Date(order.deliveryDate).toLocaleDateString('pt-BR', { month: 'short' })}</span><span className="text-4xl font-black my-1">{new Date(order.deliveryDate).getDate()}</span><span className="text-xs font-bold bg-white px-3 py-1 rounded-full border border-pink-200 shadow-sm">{order.deliveryTime}</span></div>
                 <div className="flex-1">
-                  <div className="flex flex-col md:flex-row md:justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800 pr-24 md:pr-0">{order.client}</h3><div className="flex items-center gap-2 mt-2 md:mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button></div></div><div className="text-left md:text-right mt-3 md:mt-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
+                  <div className="flex flex-col md:flex-row md:justify-between items-start mb-3"><div><h3 className="text-xl font-bold text-slate-800 pr-24 md:pr-0">{order.client}</h3><div className="flex items-center gap-2 mt-2 md:mt-1"><p className="text-sm text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-md"><Phone size={14} /> {order.phone}</p><button onClick={(e) => { e.stopPropagation(); openWhatsApp(order.phone); }} className="bg-green-500 hover:bg-green-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="WhatsApp"><MessageCircle size={16} /></button>
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          if (!order.phone) { showToastMsg('Sem telefone cadastrado.', 'error'); return; }
+                          const [y, m, d] = order.deliveryDate.split('-');
+                          const dateStr = d + '/' + m + '/' + y;
+                          const storeName = settings?.storeName || 'Café';
+                          const msg = 'Olá ' + order.client + '! 😊 Passando para lembrar que sua encomenda está agendada para *' + dateStr + ' às ' + order.deliveryTime + '*.' + (order.signal < order.total ? ' O valor restante é de *R$ ' + (order.total - order.signal).toFixed(2) + '*.' : '') + ' Qualquer dúvida estamos à disposição! 🎂 ' + storeName;
+                          const clean = order.phone.replace(/\D/g, '');
+                          window.open('https://wa.me/55' + clean + '?text=' + encodeURIComponent(msg), '_blank');
+                        }} className="bg-blue-500 hover:bg-blue-600 text-white p-1.5 rounded-lg shadow-sm transition-colors active:scale-95" title="Enviar lembrete WhatsApp"><Send size={16} /></button></div></div><div className="text-left md:text-right mt-3 md:mt-0"><div className="text-2xl font-black text-slate-800">{formatMoney(order.total)}</div>{order.signal > 0 ? (<span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-md border border-green-100 mt-1 inline-block">Sinal: {formatMoney(order.signal)}</span>) : (<span className="text-xs font-bold text-red-500 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 mt-1 inline-block">Sem Sinal</span>)}</div></div>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-4"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Descrição da Produção</p><p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{order.description || 'Sem detalhes.'}</p></div>
                   <div className="flex flex-wrap gap-2 justify-end">
                     {order.status !== 'Concluído' && (
@@ -2883,6 +2956,21 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   <button onClick={addNewProduct} className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20 active:scale-95 text-base md:text-lg mt-2">Adicionar Novo Produto</button>
                 </div>
                 
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-bold text-slate-600 text-sm uppercase">Produtos cadastrados</h4>
+                  <button onClick={() => {
+                    const updates = products.map(p => ({ ...p, newStock: '' }));
+                    setConfirmState({ isOpen: true, msg: 'Deseja repor o estoque de todos os produtos para 50 unidades?', action: async () => {
+                      const batch = writeBatch(db);
+                      products.forEach(p => { if (p.firestoreId) batch.update(getDocRef('products', p.firestoreId), { stock: 50 }); });
+                      await batch.commit();
+                      setConfirmState({ isOpen: false, msg: '', action: null });
+                      showToastMsg('Estoque de todos os produtos reposto para 50 un!');
+                    }});
+                  }} className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-sm border border-blue-200 transition-colors active:scale-95">
+                    <PlusCircle size={16}/> Repor Tudo (50 un)
+                  </button>
+                </div>
                 <div className="overflow-x-auto rounded-2xl border border-slate-200 w-full">
                   <table className="w-full text-left border-collapse min-w-[600px]">
                     <thead><tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider font-bold"><th className="p-3 md:p-4">Produto</th><th className="p-3 md:p-4">Categoria</th><th className="p-3 md:p-4">Preço</th><th className="p-3 md:p-4 text-center">Estoque</th><th className="p-3 md:p-4 text-right">Ações</th></tr></thead>
@@ -2932,6 +3020,20 @@ const PosView = ({ user, onBack, initialSettings }) => {
                   <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
                 </div>
                 <button onClick={() => handlePrintHistoryReport(historyOrders, historyDate, settings)} disabled={historyOrders.length === 0} className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors shadow-sm active:scale-95 whitespace-nowrap"><Printer size={16}/> Imprimir Relatório</button>
+                <button onClick={() => {
+                  const rows = [['Pedido','Cliente','Data','Hora','Método','Total']];
+                  historyOrders.forEach(o => {
+                    const dt = new Date(o.paidAt || o.date);
+                    rows.push(['#' + o.id, o.client, dt.toLocaleDateString('pt-BR'), dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), o.method || '', 'R$ ' + Number(o.total).toFixed(2)]);
+                  });
+                  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('
+');
+                  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = 'vendas-' + historyDate + '.csv'; a.click();
+                  URL.revokeObjectURL(url);
+                }} disabled={historyOrders.length === 0} className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors shadow-sm active:scale-95 whitespace-nowrap"><ArrowDownCircle size={16}/> Exportar CSV</button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {['Todos', 'Pix', 'Dinheiro', 'Crédito', 'Débito'].map(m => (
@@ -2951,6 +3053,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     <div className="flex items-center gap-2">
                       <button onClick={() => handlePrint(order, settings, 'customer')} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1"><Printer size={14}/> Recibo</button>
                       <button onClick={() => handleDeleteSingleOrder(order)} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1" title="Excluir pedido"><Trash2 size={14}/></button>
+                      <button onClick={() => {
+                        setConfirmState({ isOpen: true, msg: 'Reabrir o pedido #' + order.id + ' como ABERTO? Ele voltará para Comandas.', action: async () => {
+                          await updateDoc(getDocRef('orders', order.firestoreId), { paymentStatus: 'ABERTO', status: 'ABERTO', paidAt: null, method: 'Aguardando', payments: [] });
+                          setConfirmState({ isOpen: false, msg: '', action: null });
+                          showToastMsg('Pedido #' + order.id + ' reaberto com sucesso!');
+                        }});
+                      }} className="mt-0 md:mt-2 text-xs md:text-sm font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-3 py-2 md:py-1.5 rounded-lg flex items-center gap-1" title="Reabrir pedido"><RotateCcw size={14}/> Reabrir</button>
                     </div>
                   </div>
                 </div>
