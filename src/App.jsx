@@ -129,10 +129,20 @@ const getWeekId = (dateInput) => {
   try {
     const localYMD = getLocalYMD(dateInput);
     const [y, m, d] = localYMD.split('-').map(Number);
-    const dateObj = new Date(y, m - 1, d, 12, 0, 0); 
-    const start = new Date(dateObj.getFullYear(), 0, 1);
-    const week = Math.ceil((((dateObj.getTime() - start.getTime()) / 86400000) + start.getDay() + 1) / 7);
-    return `${dateObj.getFullYear()}-W${String(week).padStart(2, '0')}`;
+    const dateObj = new Date(y, m - 1, d, 12, 0, 0);
+    // ISO 8601: semana começa na segunda-feira
+    // Ajusta o dia: segunda=0, terça=1, ..., domingo=6
+    const dayOfWeek = (dateObj.getDay() + 6) % 7; // converte domingo(0) para 6, segunda(1) para 0
+    // Vai para a quinta-feira da semana atual (referência ISO)
+    const thursday = new Date(dateObj);
+    thursday.setDate(dateObj.getDate() - dayOfWeek + 3);
+    // Primeira quinta-feira do ano
+    const firstThursday = new Date(thursday.getFullYear(), 0, 1);
+    if (firstThursday.getDay() !== 4) {
+      firstThursday.setMonth(0, 1 + ((4 - firstThursday.getDay()) + 7) % 7);
+    }
+    const week = 1 + Math.round((thursday - firstThursday) / 604800000);
+    return thursday.getFullYear() + '-W' + String(week).padStart(2, '0');
   } catch (e) { return 'erro-data'; }
 };
 
