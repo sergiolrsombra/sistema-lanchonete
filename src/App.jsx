@@ -3031,8 +3031,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     const dt = new Date(o.paidAt || o.date);
                     rows.push(['#' + o.id, o.client, dt.toLocaleDateString('pt-BR'), dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}), o.method || '', 'R$ ' + Number(o.total).toFixed(2)]);
                   });
-                  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('
-');
+                  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join(String.fromCharCode(10));
                   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
