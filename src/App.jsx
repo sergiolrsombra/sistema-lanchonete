@@ -255,6 +255,160 @@ const handlePrint = (order, settings, type = 'customer') => {
   printWindow.document.close();
 };
 
+// --- IMPRESSÃO: RELATÓRIO FINANCEIRO DO DIA/SEMANA/MÊS ---
+const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings) => {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
+  const periodLabel = reportMode === 'daily'
+    ? reportDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    : reportMode === 'weekly'
+    ? `Semana ${String(reportDate.getDate()).padStart(2,'0')}/${String(reportDate.getMonth()+1).padStart(2,'0')}/${reportDate.getFullYear()}`
+    : reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const content = `<!DOCTYPE html><html><head><title>Relatório Financeiro</title>
+  <style>
+    @page { margin: 0; }
+    body { font-family: Arial, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 12px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
+    .sub { font-size: 10px; text-align: center; margin-bottom: 6px; }
+    .divider { border-top: 2px dashed #000; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .total { font-size: 15px; font-weight: 900; }
+    .section { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 6px 0 3px; }
+  </style></head><body>
+  <h2>${storeName}</h2>
+  <div class="sub">RELATÓRIO FINANCEIRO</div>
+  <div class="sub">${periodLabel}</div>
+  <div class="divider"></div>
+  <div class="section">Vendas por Método</div>
+  <div class="row"><span>💠 PIX</span><span>R$ ${byMethod.pix.toFixed(2)}</span></div>
+  <div class="row"><span>💵 Dinheiro</span><span>R$ ${byMethod.dinheiro.toFixed(2)}</span></div>
+  <div class="row"><span>💳 Cartão</span><span>R$ ${byMethod.cartao.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="row total"><span>TOTAL VENDAS</span><span>R$ ${totalSales.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="section">Movimentações de Caixa</div>
+  <div class="row"><span>⬆️ Suprimento</span><span>R$ ${totalSup.toFixed(2)}</span></div>
+  <div class="row"><span>⬇️ Sangria</span><span>R$ ${totalSang.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="row"><span>Nº de Pedidos</span><span>${orders.length}</span></div>
+  <div class="row"><span>Ticket Médio</span><span>R$ ${orders.length > 0 ? (totalSales / orders.length).toFixed(2) : '0.00'}</span></div>
+  <div class="divider"></div>
+  <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
+  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
+  </body></html>`;
+  printWindow.document.write(content);
+  printWindow.document.close();
+};
+
+// --- IMPRESSÃO: TOP MAIS VENDIDOS ---
+const handlePrintTopSelling = (orders, reportDate, reportMode, settings) => {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
+  const periodLabel = reportMode === 'daily'
+    ? reportDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+    : reportMode === 'weekly' ? 'Esta Semana'
+    : reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const ranking = Object.entries(orders.reduce((a, o) => {
+    o.items?.forEach(i => {
+      a[i.name] = (a[i.name] || 0) + i.qty;
+      i.subItems?.forEach(sub => { a[sub.name] = (a[sub.name] || 0) + (sub.qty * i.qty); });
+    });
+    return a;
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+  const rows = ranking.map((([n, q], idx) => `<div class="row"><span>${idx+1}. ${n}</span><span>${q} un</span></div>`)).join('') || '<div class="row"><span>Nenhuma venda</span></div>';
+
+  const content = `<!DOCTYPE html><html><head><title>Top Mais Vendidos</title>
+  <style>
+    @page { margin: 0; }
+    body { font-family: Arial, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 12px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
+    .sub { font-size: 10px; text-align: center; margin-bottom: 6px; }
+    .divider { border-top: 2px dashed #000; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px; }
+  </style></head><body>
+  <h2>${storeName}</h2>
+  <div class="sub">🏆 TOP MAIS VENDIDOS</div>
+  <div class="sub">${periodLabel}</div>
+  <div class="divider"></div>
+  ${rows}
+  <div class="divider"></div>
+  <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
+  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
+  </body></html>`;
+  printWindow.document.write(content);
+  printWindow.document.close();
+};
+
+// --- IMPRESSÃO: RELATÓRIO DO HISTÓRICO (por data) ---
+const handlePrintHistoryReport = (orders, date, settings) => {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
+  const [y, m, d] = date.split('-');
+  const dateLabel = `${d}/${m}/${y}`;
+  const total = orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+  const byMethod = orders.reduce((acc, o) => {
+    const payments = o.payments || [];
+    if (payments.length) {
+      payments.forEach(p => {
+        const v = Number(p.value) || 0;
+        if (p.method === 'Dinheiro') acc.dinheiro += v;
+        else if (['Pix','PIX'].includes(p.method)) acc.pix += v;
+        else acc.cartao += v;
+      });
+    } else {
+      const v = Number(o.total) || 0; const met = o.method || '';
+      if (met.includes('Dinheiro')) acc.dinheiro += v;
+      else if (met.includes('Pix') || met.includes('PIX')) acc.pix += v;
+      else acc.cartao += v;
+    }
+    return acc;
+  }, { pix: 0, dinheiro: 0, cartao: 0 });
+
+  const rows = orders.map(o => `
+    <div class="row"><span>#${o.id} ${o.client}</span><span>R$ ${Number(o.total).toFixed(2)}</span></div>
+    <div class="sub2">${new Date(o.paidAt||o.date).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} • ${o.method||'—'}</div>
+  `).join('');
+
+  const content = `<!DOCTYPE html><html><head><title>Fechamento do Dia</title>
+  <style>
+    @page { margin: 0; }
+    body { font-family: Arial, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 11px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
+    .sub { font-size: 10px; text-align: center; margin-bottom: 4px; }
+    .sub2 { font-size: 10px; color: #333; margin-bottom: 4px; padding-left: 4px; }
+    .divider { border-top: 2px dashed #000; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+    .total { font-size: 14px; font-weight: 900; }
+    .section { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 6px 0 3px; }
+  </style></head><body>
+  <h2>${storeName}</h2>
+  <div class="sub">FECHAMENTO DO DIA</div>
+  <div class="sub">${dateLabel}</div>
+  <div class="divider"></div>
+  <div class="section">Resumo</div>
+  <div class="row"><span>Total de vendas</span><span>${orders.length}</span></div>
+  <div class="row"><span>💠 PIX</span><span>R$ ${byMethod.pix.toFixed(2)}</span></div>
+  <div class="row"><span>💵 Dinheiro</span><span>R$ ${byMethod.dinheiro.toFixed(2)}</span></div>
+  <div class="row"><span>💳 Cartão</span><span>R$ ${byMethod.cartao.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="row total"><span>TOTAL GERAL</span><span>R$ ${total.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="section">Pedidos do Dia</div>
+  ${rows}
+  <div class="divider"></div>
+  <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
+  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
+  </body></html>`;
+  printWindow.document.write(content);
+  printWindow.document.close();
+};
+
 const maskCpf = (value) => {
   if (!value) return "";
   return value
@@ -718,6 +872,45 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   }, [user]);
 
   const showToastMsg = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
+
+  // Atualiza o tempo decorrido a cada 30 segundos
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Função para tocar som de notificação via Web Audio API
+  const playNotificationSound = () => {
+    try {
+      if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = audioCtx.current;
+      const freqs = [880, 1100, 880];
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        osc.type = 'sine';
+        gain.gain.setValueAtTime(0.4, ctx.currentTime + i * 0.18);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.15);
+        osc.start(ctx.currentTime + i * 0.18);
+        osc.stop(ctx.currentTime + i * 0.18 + 0.15);
+      });
+    } catch(e) { console.log('Audio não suportado'); }
+  };
+
+  // Função para calcular tempo decorrido
+  const getElapsedTime = (dateStr) => {
+    if (!dateStr) return '';
+    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+    if (diff < 1) return 'agora';
+    if (diff === 1) return 'há 1 min';
+    if (diff < 60) return 'há ' + diff + ' min';
+    const h = Math.floor(diff / 60);
+    const m = diff % 60;
+    return 'há ' + h + 'h' + (m > 0 ? ' ' + m + 'min' : '');
+  };
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -1214,9 +1407,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [reportDate, setReportDate] = useState(new Date());
   const [reportMode, setReportMode] = useState('daily');
   const [kitchenExpandedOrder, setKitchenExpandedOrder] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const prevOrderIds = useRef(new Set());
+  const audioCtx = useRef(null);
   
   const [historyDate, setHistoryDate] = useState(getTodayStr());
   const [historySearch, setHistorySearch] = useState('');
+  const [historyMethodFilter, setHistoryMethodFilter] = useState('Todos');
 
   const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
 
@@ -1247,7 +1444,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
       setSelectedCategory(prev => fetchedCategories.includes(prev) ? prev : (fetchedCategories[0] || ''));
     });
     const unsubOrders = onSnapshot(query(getCollectionRef('orders')), (snap) => {
-      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id); setOrders(list); 
+      const list = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => b.id - a.id);
+      // Som de notificação para pedidos novos pendentes na cozinha
+      const newPending = list.filter(o => o.kitchenStatus === 'Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus));
+      const hasNewOrder = newPending.some(o => !prevOrderIds.current.has(o.firestoreId));
+      if (hasNewOrder && prevOrderIds.current.size > 0) playNotificationSound();
+      prevOrderIds.current = new Set(list.map(o => o.firestoreId));
+      setOrders(list);
       if (list.length > 0) {
         const maxId = Math.max(0, ...list.map(o => Number(o.id) || 0));
         setOrderCounter(maxId + 1);
@@ -1995,6 +2198,12 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (o.paymentStatus !== 'PAGO') return false;
       if (getLocalYMD(o.paidAt || o.date) !== historyDate) return false;
       if (historySearch && !o.client?.toLowerCase().includes(historySearch.toLowerCase())) return false;
+      if (historyMethodFilter !== 'Todos') {
+        const method = o.method || '';
+        const payments = o.payments || [];
+        const hasMethod = payments.some(p => p.method === historyMethodFilter) || method.includes(historyMethodFilter);
+        if (!hasMethod) return false;
+      }
       return true;
     }).sort((a, b) => new Date(b.paidAt || b.date) - new Date(a.paidAt || a.date));
   }, [orders, historyDate, historySearch]);
@@ -2014,6 +2223,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               <button key={nav.v} onClick={() => { if(nav.v==='settings' && !isSettingsUnlocked) setShowSettingsPasswordModal(true); else setView(nav.v); }} className={`p-2.5 md:p-2 rounded-xl relative transition-all shrink-0 ${view === nav.v ? 'bg-indigo-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                 <Icon className="w-[22px] h-[22px] md:w-5 md:h-5" />
                 {nav.v==='tabs' && orders.some(o=>o.paymentStatus==='ABERTO') && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full"></span>}
+                {nav.v==='admin' && products.some(p=>p.stock<=5) && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full animate-pulse"></span>}
                 {nav.v==='kitchen' && orders.some(o=>o.kitchenStatus==='Pendente' && o.items?.some(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus)) && <span className="absolute -top-1 -right-1 bg-red-500 w-2 h-2 rounded-full animate-pulse"></span>}
               </button>
             );
@@ -2428,13 +2638,19 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div key={o.id} className="bg-white p-5 rounded-2xl shadow-sm border border-indigo-100 relative overflow-hidden group hover:shadow-md transition-shadow">
                   {o.origin === 'Mobile' || o.origin === 'WhatsApp' ? <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] px-3 py-1 rounded-bl-xl font-bold shadow-sm">App/Site</div> : null}
                   <div className="font-bold text-xl text-indigo-900 mb-1">{o.client}</div>
-                  <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block font-bold mb-3">Origem: {o.waiter || 'Balcão'}</div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded font-bold">Origem: {o.waiter || 'Balcão'}</span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${(() => { const diff = Math.floor((Date.now() - new Date(o.date).getTime()) / 60000); return diff > 20 ? 'bg-red-100 text-red-700' : diff > 10 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'; })()}`}>
+                      <Clock size={10} className="inline mr-1"/>{getElapsedTime(o.date)}
+                    </span>
+                  </div>
                   <div className="bg-slate-50 p-3 rounded-xl mb-4 border border-slate-100">
                     <div className="text-sm font-bold text-slate-700 mb-1">{o.items ? o.items.length : 0} Lanches/Bebidas</div>
                     <div className="text-2xl font-black text-slate-800">{formatMoney(o.total)}</div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => { setSelectedTabToSettle(o); setPartialPayments([]); setPaymentInputValue(''); setPayingGuest('Mesa Completa'); setShowPaymentModal(true); }} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-sm transition-colors shadow-sm active:scale-95">Receber</button>
+                    <button onClick={() => handlePrint(o, settings, 'customer')} className="bg-slate-100 text-slate-600 hover:bg-slate-200 p-3 rounded-xl transition-colors" title="Imprimir Comanda"><Printer size={18} /></button>
                     <button onClick={() => setActionAuthModal({ show: true, action: 'edit', order: o })} className="bg-blue-50 text-blue-600 hover:bg-blue-100 p-3 rounded-xl transition-colors" title="Editar Itens"><Edit3 size={18} /></button>
                     <button onClick={() => setActionAuthModal({ show: true, action: 'cancel', order: o })} className="bg-red-50 text-red-500 hover:bg-red-100 p-3 rounded-xl transition-colors" title="Cancelar Comanda"><Trash2 size={18} /></button>
                   </div>
@@ -2460,7 +2676,12 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       <span className="font-bold text-lg text-slate-800 block leading-tight">{o.client}</span>
                       <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded">Pedido #{String(o.id).slice(0, 4)}</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded"><Clock size={14}/> {o.time}</span>
+                    <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">{o.time}</span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${(() => { const diff = Math.floor((Date.now() - new Date(o.date).getTime()) / 60000); return diff > 20 ? 'bg-red-100 text-red-700 animate-pulse' : diff > 10 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'; })()}`}>
+                      <Clock size={10} className="inline mr-1"/>{getElapsedTime(o.date)}
+                    </span>
+                  </div>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-100 min-h-[100px]">
                     <ul className="text-sm space-y-2">
@@ -2545,8 +2766,21 @@ const PosView = ({ user, onBack, initialSettings }) => {
           <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
             <header className="mb-6 md:mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <h1 className="text-2xl md:text-3xl font-bold text-slate-800 flex items-center gap-3"><LayoutDashboard size={32} className="text-purple-600" /> Dashboard & Gestão</h1>
+              {products.filter(p => p.stock <= 5).length > 0 && (
+                <div className="w-full md:w-auto bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-red-700 text-sm">Estoque crítico!</div>
+                    <div className="text-xs text-red-600 font-medium">
+                      {products.filter(p => p.stock <= 5).map(p => `${p.name} (${p.stock} un)`).join(' • ')}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
                 <button onClick={triggerClearHistory} className="flex-1 md:flex-none justify-center bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm border border-red-200 flex items-center gap-2 active:scale-95"><Trash2 size={18} /> Apagar Vendas</button>
+                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
+                <button onClick={() => handlePrintTopSelling(filteredOrders, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><TrendingUp size={18}/> Top Vendidos</button>
                 <button onClick={() => setShowCashMovementModal(true)} className="flex-1 md:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
                 <div className="flex w-full md:w-auto bg-white p-1.5 rounded-xl shadow-sm border border-slate-200 mt-2 md:mt-0">
                   <button onClick={() => setReportMode('daily')} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${reportMode === 'daily' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Diário</button>
@@ -2662,12 +2896,34 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
         {view === 'history' && (
           <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
-            <h1 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-slate-800 flex items-center gap-3"><History size={32} className="text-indigo-600" /> Histórico de Vendas</h1>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
-              <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
-                <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-3">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-800 flex items-center gap-3"><History size={32} className="text-indigo-600" /> Histórico de Vendas</h1>
+              {historyOrders.length > 0 && (
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl flex items-center gap-2">
+                    <ShoppingCart size={16} className="text-blue-600" />
+                    <span className="font-bold text-blue-700 text-sm">{historyOrders.length} venda{historyOrders.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="bg-green-50 border border-green-100 px-4 py-2 rounded-xl flex items-center gap-2">
+                    <DollarSign size={16} className="text-green-600" />
+                    <span className="font-black text-green-700">{formatMoney(historyOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col gap-3">
+              <div className="flex flex-col md:flex-row gap-3">
+                <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
+                <div className="relative flex-1 w-full">
+                  <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                  <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
+                </div>
+                <button onClick={() => handlePrintHistoryReport(historyOrders, historyDate, settings)} disabled={historyOrders.length === 0} className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors shadow-sm active:scale-95 whitespace-nowrap"><Printer size={16}/> Imprimir Relatório</button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {['Todos', 'Pix', 'Dinheiro', 'Crédito', 'Débito'].map(m => (
+                  <button key={m} onClick={() => setHistoryMethodFilter(m)} className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${historyMethodFilter === m ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{m}</button>
+                ))}
               </div>
             </div>
             <div className="space-y-4">
