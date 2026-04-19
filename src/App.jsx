@@ -2716,7 +2716,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     <button onClick={() => {
                        const updatedItems = (o.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
                        updateDoc(getDocRef('orders', o.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
-                       showToastMsg(`Pedido #${String(o.id).slice(0,4)} finalizado na cozinha.`);
+                       showToastMsg('Pedido #' + String(o.id).slice(0,4) + ' finalizado na cozinha.');
                     }} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 transition-colors active:scale-95 flex items-center justify-center gap-2"><CheckSquare size={18}/> Pronto</button>
                   </div>
                 </div>
@@ -2725,6 +2725,59 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="col-span-full text-center text-slate-400 py-20 font-medium bg-white rounded-3xl border border-dashed border-slate-300">Nenhum pedido pendente na cozinha.</div>
               )}
             </div>
+
+            {/* MODAL AMPLIAR PEDIDO COZINHA */}
+            {kitchenExpandedOrder && (
+              <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setKitchenExpandedOrder(null)}>
+                <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                  <div className="bg-orange-500 text-white p-5 flex justify-between items-center">
+                    <div>
+                      <div className="font-black text-xl">{kitchenExpandedOrder.client}</div>
+                      <div className="text-orange-100 text-sm font-bold">Pedido #{String(kitchenExpandedOrder.id).slice(0,4)} • {kitchenExpandedOrder.time}</div>
+                    </div>
+                    <button onClick={() => setKitchenExpandedOrder(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={24}/></button>
+                  </div>
+                  <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+                    {(kitchenExpandedOrder.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || []).map((i, idx) => (
+                      <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="bg-orange-500 text-white font-black text-lg px-3 py-1 rounded-xl">{i.qty}x</span>
+                          <span className="font-black text-slate-800 text-lg">{i.name}</span>
+                          {i.guest && !kitchenExpandedOrder.client?.includes(i.guest) && (
+                            <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded-full ml-auto">{i.guest}</span>
+                          )}
+                        </div>
+                        {i.subItems && i.subItems.length > 0 && (
+                          <div className="pl-4 space-y-1 mt-2">
+                            {i.subItems.map((sub, sIdx) => (
+                              <div key={sIdx} className="text-sm font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl">
+                                + {sub.qty * i.qty}x {sub.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {i.obs && (
+                          <div className="mt-2 text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
+                            ⚠️ OBS: {i.obs}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-5 border-t bg-slate-50 flex gap-3">
+                    <button onClick={() => setKitchenExpandedOrder(null)} className="flex-1 py-3.5 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors">Fechar</button>
+                    <button onClick={() => {
+                      const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                      updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
+                      showToastMsg('Pedido finalizado na cozinha!');
+                      setKitchenExpandedOrder(null);
+                    }} className="flex-1 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl shadow-lg transition-colors active:scale-95 flex items-center justify-center gap-2">
+                      <CheckSquare size={20}/> Marcar Pronto
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
