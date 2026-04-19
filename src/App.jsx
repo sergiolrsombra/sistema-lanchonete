@@ -2214,7 +2214,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (historyMethodFilter !== 'Todos') {
         const method = o.method || '';
         const payments = o.payments || [];
-        const hasMethod = payments.some(p => p.method === historyMethodFilter) || method.includes(historyMethodFilter);
+        // Verifica em payments individuais OU no método combinado salvo
+        const normalizeMethod = (m) => m?.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const filterNorm = normalizeMethod(historyMethodFilter);
+        const hasMethod = payments.some(p => normalizeMethod(p.method) === filterNorm) 
+          || normalizeMethod(method).includes(filterNorm);
         if (!hasMethod) return false;
       }
       return true;
@@ -2254,6 +2258,58 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
         {actionAuthModal.show && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><div className="flex justify-center mb-4 text-red-500"><AlertOctagon size={48} /></div><h3 className="text-xl font-bold mb-2 text-center">{actionAuthModal.action === 'cancel' ? 'Cancelar Pedido' : 'Editar Pedido'}</h3><p className="text-sm text-slate-500 mb-4 text-center">Esta ação requer autorização de gerente.</p><input type="password" autoFocus placeholder="Senha do Caixa" className="w-full border p-3 text-center mb-4 rounded-xl" value={actionPassword} onChange={e=>setActionPassword(e.target.value)} onKeyDown={e=>e.key==='Enter' && confirmActionAuth()} /><div className="flex gap-2"><button onClick={()=>{setActionAuthModal({show:false,action:null,order:null});setActionPassword('');}} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button><button onClick={confirmActionAuth} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold">Confirmar</button></div></div></div>
+        )}
+
+        {kitchenExpandedOrder && (
+          <div className="fixed inset-0 bg-black/80 z-[400] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setKitchenExpandedOrder(null)}>
+            <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+              <div className="bg-orange-500 text-white p-5 flex justify-between items-center">
+                <div>
+                  <div className="font-black text-xl">{kitchenExpandedOrder.client}</div>
+                  <div className="text-orange-100 text-sm font-bold">Pedido #{String(kitchenExpandedOrder.id).slice(0,4)} • {kitchenExpandedOrder.time}</div>
+                </div>
+                <button onClick={() => setKitchenExpandedOrder(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={24}/></button>
+              </div>
+              <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+                {(kitchenExpandedOrder.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || []).map((item, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="bg-orange-500 text-white font-black text-lg px-3 py-1 rounded-xl">{item.qty}x</span>
+                      <span className="font-black text-slate-800 text-lg">{item.name}</span>
+                      {item.guest && !kitchenExpandedOrder.client?.includes(item.guest) && (
+                        <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded-full ml-auto">{item.guest}</span>
+                      )}
+                    </div>
+                    {item.subItems && item.subItems.length > 0 && (
+                      <div className="pl-4 space-y-1 mt-2">
+                        {item.subItems.map((sub, sIdx) => (
+                          <div key={sIdx} className="text-sm font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl">
+                            + {sub.qty * item.qty}x {sub.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {item.obs && (
+                      <div className="mt-2 text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
+                        ⚠️ OBS: {item.obs}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="p-5 border-t bg-slate-50 flex gap-3">
+                <button onClick={() => setKitchenExpandedOrder(null)} className="flex-1 py-3.5 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors">Fechar</button>
+                <button onClick={() => {
+                  const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
+                  updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
+                  showToastMsg('Pedido finalizado na cozinha!');
+                  setKitchenExpandedOrder(null);
+                }} className="flex-1 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl shadow-lg transition-colors active:scale-95 flex items-center justify-center gap-2">
+                  <CheckSquare size={20}/> Marcar Pronto
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {showDeleteAuthModal && (
@@ -2739,57 +2795,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
               )}
             </div>
 
-            {kitchenExpandedOrder && (
-              <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setKitchenExpandedOrder(null)}>
-                <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                  <div className="bg-orange-500 text-white p-5 flex justify-between items-center">
-                    <div>
-                      <div className="font-black text-xl">{kitchenExpandedOrder.client}</div>
-                      <div className="text-orange-100 text-sm font-bold">Pedido #{String(kitchenExpandedOrder.id).slice(0,4)} • {kitchenExpandedOrder.time}</div>
-                    </div>
-                    <button onClick={() => setKitchenExpandedOrder(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={24}/></button>
-                  </div>
-                  <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
-                    {(kitchenExpandedOrder.items?.filter(i => i.kitchenStatus === 'Pendente' || !i.kitchenStatus) || []).map((i, idx) => (
-                      <div key={idx} className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="bg-orange-500 text-white font-black text-lg px-3 py-1 rounded-xl">{i.qty}x</span>
-                          <span className="font-black text-slate-800 text-lg">{i.name}</span>
-                          {i.guest && !kitchenExpandedOrder.client?.includes(i.guest) && (
-                            <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded-full ml-auto">{i.guest}</span>
-                          )}
-                        </div>
-                        {i.subItems && i.subItems.length > 0 && (
-                          <div className="pl-4 space-y-1 mt-2">
-                            {i.subItems.map((sub, sIdx) => (
-                              <div key={sIdx} className="text-sm font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl">
-                                + {sub.qty * i.qty}x {sub.name}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {i.obs && (
-                          <div className="mt-2 text-sm font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
-                            ⚠️ OBS: {i.obs}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-5 border-t bg-slate-50 flex gap-3">
-                    <button onClick={() => setKitchenExpandedOrder(null)} className="flex-1 py-3.5 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 transition-colors">Fechar</button>
-                    <button onClick={() => {
-                      const updatedItems = (kitchenExpandedOrder.items || []).map(i => ({ ...i, kitchenStatus: 'Pronto' }));
-                      updateDoc(getDocRef('orders', kitchenExpandedOrder.firestoreId), { kitchenStatus: 'Pronto', items: updatedItems });
-                      showToastMsg('Pedido finalizado na cozinha!');
-                      setKitchenExpandedOrder(null);
-                    }} className="flex-1 py-3.5 bg-orange-500 hover:bg-orange-600 text-white font-black rounded-xl shadow-lg transition-colors active:scale-95 flex items-center justify-center gap-2">
-                      <CheckSquare size={20}/> Marcar Pronto
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -3014,7 +3019,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col gap-3">
               <div className="flex flex-col md:flex-row gap-3">
-                <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
+                <input type="date" value={historyDate} onChange={e => { setHistoryDate(e.target.value); setHistoryMethodFilter('Todos'); setHistorySearch(''); }} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
                 <div className="relative flex-1 w-full">
                   <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
                   <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
