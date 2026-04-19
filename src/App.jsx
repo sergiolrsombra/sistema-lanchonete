@@ -255,160 +255,6 @@ const handlePrint = (order, settings, type = 'customer') => {
   printWindow.document.close();
 };
 
-// --- IMPRESSÃO: RELATÓRIO FINANCEIRO DO DIA/SEMANA/MÊS ---
-const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings) => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
-  const periodLabel = reportMode === 'daily'
-    ? reportDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-    : reportMode === 'weekly'
-    ? `Semana ${String(reportDate.getDate()).padStart(2,'0')}/${String(reportDate.getMonth()+1).padStart(2,'0')}/${reportDate.getFullYear()}`
-    : reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-
-  const content = `<!DOCTYPE html><html><head><title>Relatório Financeiro</title>
-  <style>
-    @page { margin: 0; }
-    body { font-family: Arial, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 12px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
-    .sub { font-size: 10px; text-align: center; margin-bottom: 6px; }
-    .divider { border-top: 2px dashed #000; margin: 6px 0; }
-    .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-    .total { font-size: 15px; font-weight: 900; }
-    .section { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 6px 0 3px; }
-  </style></head><body>
-  <h2>${storeName}</h2>
-  <div class="sub">RELATÓRIO FINANCEIRO</div>
-  <div class="sub">${periodLabel}</div>
-  <div class="divider"></div>
-  <div class="section">Vendas por Método</div>
-  <div class="row"><span>💠 PIX</span><span>R$ ${byMethod.pix.toFixed(2)}</span></div>
-  <div class="row"><span>💵 Dinheiro</span><span>R$ ${byMethod.dinheiro.toFixed(2)}</span></div>
-  <div class="row"><span>💳 Cartão</span><span>R$ ${byMethod.cartao.toFixed(2)}</span></div>
-  <div class="divider"></div>
-  <div class="row total"><span>TOTAL VENDAS</span><span>R$ ${totalSales.toFixed(2)}</span></div>
-  <div class="divider"></div>
-  <div class="section">Movimentações de Caixa</div>
-  <div class="row"><span>⬆️ Suprimento</span><span>R$ ${totalSup.toFixed(2)}</span></div>
-  <div class="row"><span>⬇️ Sangria</span><span>R$ ${totalSang.toFixed(2)}</span></div>
-  <div class="divider"></div>
-  <div class="row"><span>Nº de Pedidos</span><span>${orders.length}</span></div>
-  <div class="row"><span>Ticket Médio</span><span>R$ ${orders.length > 0 ? (totalSales / orders.length).toFixed(2) : '0.00'}</span></div>
-  <div class="divider"></div>
-  <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
-  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
-  </body></html>`;
-  printWindow.document.write(content);
-  printWindow.document.close();
-};
-
-// --- IMPRESSÃO: TOP MAIS VENDIDOS ---
-const handlePrintTopSelling = (orders, reportDate, reportMode, settings) => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
-  const periodLabel = reportMode === 'daily'
-    ? reportDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
-    : reportMode === 'weekly' ? 'Esta Semana'
-    : reportDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-
-  const ranking = Object.entries(orders.reduce((a, o) => {
-    o.items?.forEach(i => {
-      a[i.name] = (a[i.name] || 0) + i.qty;
-      i.subItems?.forEach(sub => { a[sub.name] = (a[sub.name] || 0) + (sub.qty * i.qty); });
-    });
-    return a;
-  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 15);
-
-  const rows = ranking.map((([n, q], idx) => `<div class="row"><span>${idx+1}. ${n}</span><span>${q} un</span></div>`)).join('') || '<div class="row"><span>Nenhuma venda</span></div>';
-
-  const content = `<!DOCTYPE html><html><head><title>Top Mais Vendidos</title>
-  <style>
-    @page { margin: 0; }
-    body { font-family: Arial, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 12px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
-    .sub { font-size: 10px; text-align: center; margin-bottom: 6px; }
-    .divider { border-top: 2px dashed #000; margin: 6px 0; }
-    .row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px; }
-  </style></head><body>
-  <h2>${storeName}</h2>
-  <div class="sub">🏆 TOP MAIS VENDIDOS</div>
-  <div class="sub">${periodLabel}</div>
-  <div class="divider"></div>
-  ${rows}
-  <div class="divider"></div>
-  <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
-  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
-  </body></html>`;
-  printWindow.document.write(content);
-  printWindow.document.close();
-};
-
-// --- IMPRESSÃO: RELATÓRIO DO HISTÓRICO (por data) ---
-const handlePrintHistoryReport = (orders, date, settings) => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
-  const [y, m, d] = date.split('-');
-  const dateLabel = `${d}/${m}/${y}`;
-  const total = orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
-  const byMethod = orders.reduce((acc, o) => {
-    const payments = o.payments || [];
-    if (payments.length) {
-      payments.forEach(p => {
-        const v = Number(p.value) || 0;
-        if (p.method === 'Dinheiro') acc.dinheiro += v;
-        else if (['Pix','PIX'].includes(p.method)) acc.pix += v;
-        else acc.cartao += v;
-      });
-    } else {
-      const v = Number(o.total) || 0; const met = o.method || '';
-      if (met.includes('Dinheiro')) acc.dinheiro += v;
-      else if (met.includes('Pix') || met.includes('PIX')) acc.pix += v;
-      else acc.cartao += v;
-    }
-    return acc;
-  }, { pix: 0, dinheiro: 0, cartao: 0 });
-
-  const rows = orders.map(o => `
-    <div class="row"><span>#${o.id} ${o.client}</span><span>R$ ${Number(o.total).toFixed(2)}</span></div>
-    <div class="sub2">${new Date(o.paidAt||o.date).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} • ${o.method||'—'}</div>
-  `).join('');
-
-  const content = `<!DOCTYPE html><html><head><title>Fechamento do Dia</title>
-  <style>
-    @page { margin: 0; }
-    body { font-family: Arial, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 11px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
-    .sub { font-size: 10px; text-align: center; margin-bottom: 4px; }
-    .sub2 { font-size: 10px; color: #333; margin-bottom: 4px; padding-left: 4px; }
-    .divider { border-top: 2px dashed #000; margin: 6px 0; }
-    .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-    .total { font-size: 14px; font-weight: 900; }
-    .section { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 6px 0 3px; }
-  </style></head><body>
-  <h2>${storeName}</h2>
-  <div class="sub">FECHAMENTO DO DIA</div>
-  <div class="sub">${dateLabel}</div>
-  <div class="divider"></div>
-  <div class="section">Resumo</div>
-  <div class="row"><span>Total de vendas</span><span>${orders.length}</span></div>
-  <div class="row"><span>💠 PIX</span><span>R$ ${byMethod.pix.toFixed(2)}</span></div>
-  <div class="row"><span>💵 Dinheiro</span><span>R$ ${byMethod.dinheiro.toFixed(2)}</span></div>
-  <div class="row"><span>💳 Cartão</span><span>R$ ${byMethod.cartao.toFixed(2)}</span></div>
-  <div class="divider"></div>
-  <div class="row total"><span>TOTAL GERAL</span><span>R$ ${total.toFixed(2)}</span></div>
-  <div class="divider"></div>
-  <div class="section">Pedidos do Dia</div>
-  ${rows}
-  <div class="divider"></div>
-  <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
-  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
-  </body></html>`;
-  printWindow.document.write(content);
-  printWindow.document.close();
-};
-
 const maskCpf = (value) => {
   if (!value) return "";
   return value
@@ -1412,7 +1258,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   
   const [historyDate, setHistoryDate] = useState(getTodayStr());
   const [historySearch, setHistorySearch] = useState('');
-  const [historyMethodFilter, setHistoryMethodFilter] = useState('Todos');
 
   const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
 
@@ -2197,12 +2042,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
       if (o.paymentStatus !== 'PAGO') return false;
       if (getLocalYMD(o.paidAt || o.date) !== historyDate) return false;
       if (historySearch && !o.client?.toLowerCase().includes(historySearch.toLowerCase())) return false;
-      if (historyMethodFilter !== 'Todos') {
-        const method = o.method || '';
-        const payments = o.payments || [];
-        const hasMethod = payments.some(p => p.method === historyMethodFilter) || method.includes(historyMethodFilter);
-        if (!hasMethod) return false;
-      }
       return true;
     }).sort((a, b) => new Date(b.paidAt || b.date) - new Date(a.paidAt || a.date));
   }, [orders, historyDate, historySearch]);
@@ -2777,8 +2616,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
               )}
               <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
                 <button onClick={triggerClearHistory} className="flex-1 md:flex-none justify-center bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm border border-red-200 flex items-center gap-2 active:scale-95"><Trash2 size={18} /> Apagar Vendas</button>
-                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
-                <button onClick={() => handlePrintTopSelling(filteredOrders, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><TrendingUp size={18}/> Top Vendidos</button>
                 <button onClick={() => setShowCashMovementModal(true)} className="flex-1 md:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
                 <div className="flex w-full md:w-auto bg-white p-1.5 rounded-xl shadow-sm border border-slate-200 mt-2 md:mt-0">
                   <button onClick={() => setReportMode('daily')} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${reportMode === 'daily' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Diário</button>
@@ -2909,19 +2746,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 </div>
               )}
             </div>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col gap-3">
-              <div className="flex flex-col md:flex-row gap-3">
-                <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
-                <div className="relative flex-1 w-full">
-                  <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
-                  <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
-                </div>
-                <button onClick={() => handlePrintHistoryReport(historyOrders, historyDate, settings)} disabled={historyOrders.length === 0} className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm disabled:opacity-50 transition-colors shadow-sm active:scale-95 whitespace-nowrap"><Printer size={16}/> Imprimir Relatório</button>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {['Todos', 'Pix', 'Dinheiro', 'Crédito', 'Débito'].map(m => (
-                  <button key={m} onClick={() => setHistoryMethodFilter(m)} className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${historyMethodFilter === m ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{m}</button>
-                ))}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
+              <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="p-3 border border-slate-300 rounded-xl outline-none font-bold w-full md:w-auto text-sm md:text-base" />
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                <input value={historySearch} onChange={e => setHistorySearch(e.target.value)} placeholder="Buscar cliente..." className="w-full bg-slate-50 pl-10 p-3 border border-slate-300 rounded-xl outline-none font-bold text-sm md:text-base" />
               </div>
             </div>
             <div className="space-y-4">
