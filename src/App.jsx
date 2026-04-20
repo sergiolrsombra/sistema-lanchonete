@@ -266,7 +266,7 @@ const handlePrint = (order, settings, type = 'customer') => {
 };
 
 // --- IMPRESSÃO: RELATÓRIO FINANCEIRO DO DIA/SEMANA/MÊS ---
-const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings) => {
+const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings, costsData = [], totalCostsData = 0) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
   const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
@@ -285,6 +285,7 @@ const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, tot
     .divider { border-top: 2px dashed #000; margin: 6px 0; }
     .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
     .total { font-size: 15px; font-weight: 900; }
+    .lucro { font-size: 14px; font-weight: 900; }
     .section { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 6px 0 3px; }
   </style></head><body>
   <h2>${storeName}</h2>
@@ -297,6 +298,13 @@ const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, tot
   <div class="row"><span>💳 Cartão</span><span>R$ ${byMethod.cartao.toFixed(2)}</span></div>
   <div class="divider"></div>
   <div class="row total"><span>TOTAL VENDAS</span><span>R$ ${totalSales.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="section">Custos do Período</div>
+  ${costsData.length > 0 ? costsData.map(c => '<div class="row"><span>' + (c.description||c.category) + '</span><span>R$ ' + Number(c.value).toFixed(2) + '</span></div>').join('') : '<div class="row"><span>Nenhum custo lançado</span></div>'}
+  <div class="divider"></div>
+  <div class="row total"><span>TOTAL CUSTOS</span><span>R$ ${totalCostsData.toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="row lucro" style="color:${totalSales - totalCostsData >= 0 ? '#16a34a' : '#dc2626'}"><span>LUCRO LÍQUIDO</span><span>R$ ${(totalSales - totalCostsData).toFixed(2)}</span></div>
   <div class="divider"></div>
   <div class="section">Movimentações de Caixa</div>
   <div class="row"><span>⬆️ Suprimento</span><span>R$ ${totalSup.toFixed(2)}</span></div>
@@ -1349,6 +1357,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [newProdCat, setNewProdCat] = useState('');
 
   const [cashMovements, setCashMovements] = useState([]);
+  const [costs, setCosts] = useState([]);
+  const [showCostModal, setShowCostModal] = useState(false);
+  const [costValue, setCostValue] = useState('');
+  const [costDesc, setCostDesc] = useState('');
+  const [costCategory, setCostCategory] = useState('Ingredientes');
   const [showCashMovementModal, setShowCashMovementModal] = useState(false);
   const [movementType, setMovementType] = useState('suprimento');
   const [movementValue, setMovementValue] = useState('');
@@ -1446,7 +1459,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
     });
     const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))); });
     const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
-    return () => { unsubProd(); unsubOrders(); unsubMove(); unsubFuture(); };
+    const unsubCosts = onSnapshot(query(getCollectionRef('costs')), (snap) => { setCosts(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a,b) => (b.date||'').localeCompare(a.date||''))); });
+    return () => { unsubProd(); unsubOrders(); unsubMove(); unsubFuture(); unsubCosts(); };
   }, [user]);
 
   useEffect(() => {
@@ -2021,6 +2035,23 @@ const PosView = ({ user, onBack, initialSettings }) => {
     }
   };
 
+  const handleAddCost = async () => {
+    if (!costValue || parseFloat(costValue) <= 0 || !user) return;
+    try {
+      await addDoc(getCollectionRef('costs'), {
+        value: parseFloat(costValue),
+        description: costDesc,
+        category: costCategory,
+        date: new Date().toISOString(),
+        createdAt: Timestamp.now()
+      });
+      setShowCostModal(false);
+      setCostValue('');
+      setCostDesc('');
+      showToastMsg('Custo registrado!');
+    } catch(e) { console.error(e); showToastMsg('Erro ao registrar custo.', 'error'); }
+  };
+
   const handleAddCashMovement = async () => {
     if (!movementValue || parseFloat(movementValue) <= 0 || !user) return;
     try { await addDoc(getCollectionRef('cash_movements'), { type: movementType, value: parseFloat(movementValue), description: movementDesc, date: new Date().toISOString(), createdAt: Timestamp.now() }); setShowCashMovementModal(false); setMovementValue(''); setMovementDesc(''); showToastMsg("Movimentação registrada!"); } 
@@ -2083,7 +2114,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       action: async () => {
         setConfirmState({ isOpen: false, msg: '', action: null });
         try {
-          const cols = ['orders', 'records_v2', 'closed_weeks', 'cash_movements', 'future_orders'];
+          const cols = ['orders', 'records_v2', 'closed_weeks', 'cash_movements', 'future_orders', 'costs'];
           for (const c of cols) {
             const snapshot = await getDocs(query(getCollectionRef(c)));
             if (!snapshot.empty) {
@@ -2156,7 +2187,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
         if (reportMode === 'daily') {
             return od === reportDate.getDate() && (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear();
         } else if (reportMode === 'weekly') {
-            return getWeekId(localYMD) === getWeekId(getLocalYMD(reportDate.toISOString()));
+            return getWeekId(localYMD) === getWeekId(reportDate.getFullYear() + '-' + String(reportDate.getMonth()+1).padStart(2,'0') + '-' + String(reportDate.getDate()).padStart(2,'0'));
         } else {
             return (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear();
         }
@@ -2165,6 +2196,18 @@ const PosView = ({ user, onBack, initialSettings }) => {
   };
   
   const filteredOrders = getFilteredOrders();
+  const filteredCosts = costs.filter(c => {
+    if (!c.date) return false;
+    const localYMD = getLocalYMD(c.date);
+    const [oy, om, od] = localYMD.split('-').map(Number);
+    const rdY = reportDate.getFullYear(), rdM = reportDate.getMonth(), rdD = reportDate.getDate();
+    const rdYMD = rdY + '-' + String(rdM+1).padStart(2,'0') + '-' + String(rdD).padStart(2,'0');
+    if (reportMode === 'daily') return od === rdD && (om-1) === rdM && oy === rdY;
+    else if (reportMode === 'weekly') return getWeekId(localYMD) === getWeekId(rdYMD);
+    else return (om-1) === rdM && oy === rdY;
+  });
+  const totalCosts = filteredCosts.reduce((acc, c) => acc + (Number(c.value) || 0), 0);
+  const lucroLiquido = totalSales - totalCosts;
   const totalSales = filteredOrders.reduce((acc, order) => acc + (Number(order.total) || 0), 0);
   const salesByMethod = filteredOrders.reduce((acc, order) => {
     if (order.payments && Array.isArray(order.payments)) {
@@ -2179,9 +2222,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const localYMD = getLocalYMD(m.date);
     const [oy, om, od] = localYMD.split('-').map(Number);
 
-    if (reportMode === 'daily') return od === reportDate.getDate() && (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear(); 
-    else if (reportMode === 'weekly') return getWeekId(localYMD) === getWeekId(getLocalYMD(reportDate.toISOString()));
-    else return (om - 1) === reportDate.getMonth() && oy === reportDate.getFullYear();
+    const rdY = reportDate.getFullYear(), rdM = reportDate.getMonth(), rdD = reportDate.getDate();
+    const rdYMD = rdY + '-' + String(rdM+1).padStart(2,'0') + '-' + String(rdD).padStart(2,'0');
+    if (reportMode === 'daily') return od === rdD && (om-1) === rdM && oy === rdY;
+    else if (reportMode === 'weekly') return getWeekId(localYMD) === getWeekId(rdYMD);
+    else return (om-1) === rdM && oy === rdY;
   });
   
   const totalSuprimento = filteredMovements.filter(m => m.type === 'suprimento').reduce((acc, m) => acc + (Number(m.value) || 0), 0);
@@ -2234,7 +2279,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       <div className="bg-slate-900 text-white flex flex-row md:flex-col items-center justify-around md:justify-start md:py-6 fixed w-full h-16 bottom-0 md:h-full md:w-16 md:top-0 md:left-0 z-[60] shadow-[0_-10px_20px_rgba(0,0,0,0.1)] md:shadow-2xl px-2 md:px-0">
         <div onClick={onBack} className="hidden md:flex p-2 bg-amber-500 rounded-lg mb-2 cursor-pointer hover:bg-amber-400 transition-colors" title="Sair"><Store size={20} className="text-slate-900" /></div>
         <div className="flex flex-row md:flex-col items-center gap-1 sm:gap-2 md:gap-4 w-full md:mt-4 justify-between md:justify-start overflow-x-auto hide-scrollbar px-1">
-          {[{v:'pos',i:ShoppingCart},{v:'tabs',i:ClipboardList},{v:'kitchen',i:ChefHat},{v:'orders',i:Cake},{v:'history',i:History},{v:'cash',i:Coins},{v:'admin',i:LayoutDashboard},{v:'settings',i:Settings}].map(nav => {
+          {[{v:'pos',i:ShoppingCart},{v:'tabs',i:ClipboardList},{v:'kitchen',i:ChefHat},{v:'orders',i:Cake},{v:'history',i:History},{v:'cash',i:Coins},{v:'admin',i:LayoutDashboard},{v:'costs',i:DollarSign},{v:'settings',i:Settings}].map(nav => {
             const Icon = nav.i;
             return (
               <button key={nav.v} onClick={() => { if(nav.v==='settings' && !isSettingsUnlocked) setShowSettingsPasswordModal(true); else setView(nav.v); }} className={`p-2.5 md:p-2 rounded-xl relative transition-all shrink-0 ${view === nav.v ? 'bg-indigo-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
@@ -2544,6 +2589,34 @@ const PosView = ({ user, onBack, initialSettings }) => {
         )}
 
         {/* MODAL MOVIMENTAÇÃO */}
+        {showCostModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-xl text-slate-800 flex items-center gap-2"><DollarSign size={20} className="text-rose-600"/> Lançar Custo</h3>
+                <button onClick={() => setShowCostModal(false)} className="hover:bg-slate-100 p-2 rounded-full transition-colors"><X size={20} className="text-slate-500" /></button>
+              </div>
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Categoria</label>
+                <div className="flex gap-2 flex-wrap">
+                  {['Ingredientes', 'Contas Fixas', 'Fornecedor', 'Outros'].map(cat => (
+                    <button key={cat} onClick={() => setCostCategory(cat)} className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${costCategory === cat ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{cat}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Valor (R$)</label>
+                <input type="number" step="0.01" autoFocus value={costValue} onChange={e => setCostValue(e.target.value)} className="w-full p-4 border border-slate-300 rounded-xl text-xl font-black text-center outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition-all" placeholder="0.00" />
+              </div>
+              <div className="mb-8">
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Descrição</label>
+                <input type="text" value={costDesc} onChange={e => setCostDesc(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddCost()} className="w-full p-4 border border-slate-300 rounded-xl outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 transition-all font-medium" placeholder="Ex: Farinha de trigo, Conta de luz..." />
+              </div>
+              <button onClick={handleAddCost} className="w-full bg-rose-600 text-white py-4 rounded-xl font-bold hover:bg-rose-700 transition-colors shadow-xl shadow-rose-600/20 active:scale-95 text-lg">Confirmar Custo</button>
+            </div>
+          </div>
+        )}
+
         {showCashMovementModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95">
@@ -2870,9 +2943,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
               )}
               <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
                 <button onClick={triggerClearHistory} className="flex-1 md:flex-none justify-center bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm border border-red-200 flex items-center gap-2 active:scale-95"><Trash2 size={18} /> Apagar Vendas</button>
-                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
+                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings, filteredCosts, totalCosts)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
                 <button onClick={() => handlePrintTopSelling(filteredOrders, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><TrendingUp size={18}/> Top Vendidos</button>
                 <button onClick={() => setShowCashMovementModal(true)} className="flex-1 md:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
+                <button onClick={() => setShowCostModal(true)} className="flex-1 md:flex-none justify-center bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg flex items-center gap-2 active:scale-95"><DollarSign size={18} /> Lançar Custo</button>
                 <div className="flex w-full md:w-auto bg-white p-1.5 rounded-xl shadow-sm border border-slate-200 mt-2 md:mt-0">
                   <button onClick={() => setReportMode('daily')} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${reportMode === 'daily' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Diário</button>
                   <button onClick={() => setReportMode('weekly')} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs md:text-sm font-bold transition-all ${reportMode === 'weekly' ? 'bg-blue-100 text-blue-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Semanal</button>
@@ -2906,6 +2980,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="p-4 md:p-5 bg-blue-50/50 rounded-2xl border border-blue-100"><div className="text-blue-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><DollarSign size={18} /> Faturamento Bruto</div><div className="text-3xl md:text-4xl font-black text-slate-800">R$ {totalSales.toFixed(2)}</div></div>
                 <div className="p-4 md:p-5 bg-purple-50/50 rounded-2xl border border-purple-100"><div className="text-purple-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18} /> Volume de Vendas</div><div className="text-3xl md:text-4xl font-black text-slate-800">{filteredOrders.length} <span className="text-sm md:text-lg text-slate-500 font-medium">pedidos</span></div></div>
                 <div className="p-4 md:p-5 bg-amber-50/50 rounded-2xl border border-amber-100"><div className="text-amber-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-3xl md:text-4xl font-black text-slate-800">R$ {filteredOrders.length > 0 ? (totalSales / filteredOrders.length).toFixed(2) : '0.00'}</div></div>
+                <div className="p-4 md:p-5 bg-rose-50/50 rounded-2xl border border-rose-100"><div className="text-rose-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowDownCircle size={18} /> Custos do Período</div><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalCosts)}</div></div>
+                <div className={`p-4 md:p-5 rounded-2xl border ${lucroLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}><div className={`text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2 ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}><TrendingUp size={18} /> Lucro Líquido</div><div className={`text-3xl md:text-4xl font-black ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatMoney(lucroLiquido)}</div></div>
               </div>
               
               <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-2">
@@ -3074,6 +3150,48 @@ const PosView = ({ user, onBack, initialSettings }) => {
         )}
 
         {view === 'cash' && <CashControl user={user} orders={orders} />}
+
+        {view === 'costs' && (
+          <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-800 flex items-center gap-3"><DollarSign size={32} className="text-rose-600" /> Custos</h1>
+              <button onClick={() => setShowCostModal(true)} className="w-full md:w-auto bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all"><PlusCircle size={20} /> Novo Custo</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              {['Ingredientes','Contas Fixas','Fornecedor','Outros'].map(cat => {
+                const catTotal = costs.filter(c => c.category === cat).reduce((a,c) => a + (Number(c.value)||0), 0);
+                return (
+                  <div key={cat} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
+                    <div className="text-xs font-bold text-slate-400 uppercase mb-1">{cat}</div>
+                    <div className="text-lg font-black text-rose-600">{formatMoney(catTotal)}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="bg-rose-50 p-4 border-b flex justify-between items-center">
+                <span className="font-bold text-rose-900">{costs.length} lançamento(s)</span>
+                <span className="font-black text-rose-700 text-lg">{formatMoney(costs.reduce((a,c) => a + (Number(c.value)||0), 0))}</span>
+              </div>
+              {costs.length === 0 && <div className="p-10 text-center text-slate-400 font-medium">Nenhum custo lançado.</div>}
+              {costs.map(c => (
+                <div key={c.firestoreId} className="flex items-center justify-between p-4 border-b last:border-0 hover:bg-slate-50 transition-colors">
+                  <div>
+                    <div className="font-bold text-slate-800">{c.description || '—'}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs font-bold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">{c.category}</span>
+                      <span className="text-xs text-slate-400">{c.date ? new Date(c.date).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : ''}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-black text-rose-600 text-lg">{formatMoney(c.value)}</span>
+                    <button onClick={() => setConfirmState({ isOpen: true, msg: 'Excluir este custo?', action: async () => { await deleteDoc(getDocRef('costs', c.firestoreId)); setConfirmState({isOpen:false,msg:'',action:null}); showToastMsg('Custo excluído!'); }})} className="p-2 bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 rounded-xl transition-colors"><Trash2 size={16}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {view === 'settings' && (
           <div className="p-4 md:p-8 h-[calc(100vh-4rem)] md:h-screen overflow-y-auto bg-slate-50">
