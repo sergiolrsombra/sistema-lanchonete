@@ -2207,8 +2207,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
     else return (om-1) === rdM && oy === rdY;
   });
   const totalCosts = filteredCosts.reduce((acc, c) => acc + (Number(c.value) || 0), 0);
-  const lucroLiquido = totalSales - totalCosts;
   const totalSales = filteredOrders.reduce((acc, order) => acc + (Number(order.total) || 0), 0);
+  const lucroLiquido = totalSales - totalCosts;
   const salesByMethod = filteredOrders.reduce((acc, order) => {
     if (order.payments && Array.isArray(order.payments)) {
       order.payments.forEach(p => { const val = Number(p.value) || 0; if (p.method === 'Dinheiro') acc.dinheiro += val; else if (p.method === 'Pix') acc.pix += val; else if (['Crédito', 'Débito'].includes(p.method)) acc.cartao += val; });
