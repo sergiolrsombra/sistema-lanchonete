@@ -266,7 +266,7 @@ const handlePrint = (order, settings, type = 'customer') => {
 };
 
 // --- IMPRESSÃO: RELATÓRIO FINANCEIRO DO DIA/SEMANA/MÊS ---
-const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings, costsData = [], totalCostsData = 0) => {
+const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings, costsData = [], totalCostsData = 0, cmvPrint = 0) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
   const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
@@ -305,6 +305,11 @@ const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, tot
   <div class="row total"><span>TOTAL CUSTOS</span><span>R$ ${totalCostsData.toFixed(2)}</span></div>
   <div class="divider"></div>
   <div class="row lucro" style="color:${totalSales - totalCostsData >= 0 ? '#16a34a' : '#dc2626'}"><span>LUCRO LÍQUIDO</span><span>R$ ${(totalSales - totalCostsData).toFixed(2)}</span></div>
+  <div class="divider"></div>
+  <div class="section">CMV — Custo de Mercadoria Vendida</div>
+  <div class="row"><span>CMV Total</span><span>R$ ${cmvPrint.toFixed(2)}</span></div>
+  <div class="row"><span>CMV %</span><span>${totalSales > 0 ? ((cmvPrint/totalSales)*100).toFixed(1) : '0.0'}%</span></div>
+  <div class="row"><span>Margem Bruta</span><span>R$ ${(totalSales - cmvPrint).toFixed(2)}</span></div>
   <div class="divider"></div>
   <div class="section">Movimentações de Caixa</div>
   <div class="row"><span>⬆️ Suprimento</span><span>R$ ${totalSup.toFixed(2)}</span></div>
@@ -1355,6 +1360,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [newProdName, setNewProdName] = useState('');
   const [newProdPrice, setNewProdPrice] = useState('');
   const [newProdCat, setNewProdCat] = useState('');
+  const [newProdCost, setNewProdCost] = useState('');
 
   const [cashMovements, setCashMovements] = useState([]);
   const [costs, setCosts] = useState([]);
@@ -2063,9 +2069,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
     try { 
       const safePrice = parseFloat(newProdPrice.toString().replace(',', '.'));
       if (isNaN(safePrice)) throw new Error("Preço inválido.");
-      await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: safePrice, category: newProdCat, stock: 50, icon: 'burger' }); 
+      await addDoc(getCollectionRef('products'), { id: Date.now(), name: newProdName, price: safePrice, cost: parseFloat(newProdCost) || 0, category: newProdCat, stock: 50, icon: 'burger' }); 
       setNewProdName(''); 
-      setNewProdPrice(''); 
+      setNewProdPrice('');
+      setNewProdCost('');
       showToastMsg("Produto adicionado!"); 
     }
     catch(e) { console.error("Adicionar produto erro:", e); showToastMsg("Erro: " + e.message, "error"); }
@@ -2077,7 +2084,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       const priceStr = String(editingProduct.price).replace(',', '.');
       const priceNum = parseFloat(priceStr);
       if (isNaN(priceNum)) throw new Error("Preço inválido.");
-      await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: priceNum, category: editingProduct.category, stock: editingProduct.stock }); 
+      await updateDoc(getDocRef('products', editingProduct.firestoreId), { name: editingProduct.name, price: priceNum, cost: parseFloat(editingProduct.cost) || 0, category: editingProduct.category, stock: editingProduct.stock }); 
       setEditingProduct(null); 
       showToastMsg("Produto atualizado!"); 
     }
@@ -2209,6 +2216,21 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const totalCosts = filteredCosts.reduce((acc, c) => acc + (Number(c.value) || 0), 0);
   const totalSales = filteredOrders.reduce((acc, order) => acc + (Number(order.total) || 0), 0);
   const lucroLiquido = totalSales - totalCosts;
+
+  // CMV: custo de mercadoria vendida (qty vendida × custo cadastrado do produto)
+  const cmvTotal = filteredOrders.reduce((acc, order) => {
+    order.items?.forEach(item => {
+      const prod = products.find(p => String(p.id) === String(item.id) || p.name === item.name);
+      const cost = Number(prod?.cost || 0);
+      acc += cost * Number(item.qty || 1);
+      item.subItems?.forEach(sub => {
+        const subProd = products.find(p => String(p.id) === String(sub.id) || p.name === sub.name);
+        acc += Number(subProd?.cost || 0) * Number(sub.qty || 1) * Number(item.qty || 1);
+      });
+    });
+    return acc;
+  }, 0);
+  const cmvPercent = totalSales > 0 ? ((cmvTotal / totalSales) * 100).toFixed(1) : '0.0';
   const salesByMethod = filteredOrders.reduce((acc, order) => {
     if (order.payments && Array.isArray(order.payments)) {
       order.payments.forEach(p => { const val = Number(p.value) || 0; if (p.method === 'Dinheiro') acc.dinheiro += val; else if (p.method === 'Pix') acc.pix += val; else if (['Crédito', 'Débito'].includes(p.method)) acc.cartao += val; });
@@ -2268,7 +2290,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       }
       return true;
     }).sort((a, b) => new Date(b.paidAt || b.date) - new Date(a.paidAt || a.date));
-  }, [orders, historyDate, historySearch]);
+  }, [orders, historyDate, historySearch, historyMethodFilter]);
 
   return (
     <div className="font-sans bg-slate-100 min-h-screen text-slate-900 flex animate-in fade-in">
@@ -2638,6 +2660,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome</label><input value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="text" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800" /></div>
+                  <div><label className="block text-xs font-bold text-rose-500 uppercase mb-2">Custo CMV (R$)</label><input type="number" step="0.01" value={editingProduct.cost || ''} onChange={(e) => setEditingProduct({ ...editingProduct, cost: e.target.value })} className="w-full p-3.5 border border-rose-200 bg-rose-50 rounded-xl focus:border-rose-500 focus:ring-2 focus:ring-rose-100 outline-none transition-all font-bold text-rose-800" placeholder="0.00" /></div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label>
                     <input type="text" list="edit-cat-list" value={editingProduct.category} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3.5 border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all font-bold text-slate-800 bg-white" placeholder="Categoria" />
@@ -2943,7 +2966,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               )}
               <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
                 <button onClick={triggerClearHistory} className="flex-1 md:flex-none justify-center bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm border border-red-200 flex items-center gap-2 active:scale-95"><Trash2 size={18} /> Apagar Vendas</button>
-                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings, filteredCosts, totalCosts)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
+                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings, filteredCosts, totalCosts, cmvTotal)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
                 <button onClick={() => handlePrintTopSelling(filteredOrders, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><TrendingUp size={18}/> Top Vendidos</button>
                 <button onClick={() => setShowCashMovementModal(true)} className="flex-1 md:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
                 <button onClick={() => setShowCostModal(true)} className="flex-1 md:flex-none justify-center bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg flex items-center gap-2 active:scale-95"><DollarSign size={18} /> Lançar Custo</button>
@@ -2982,6 +3005,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="p-4 md:p-5 bg-amber-50/50 rounded-2xl border border-amber-100"><div className="text-amber-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-3xl md:text-4xl font-black text-slate-800">R$ {filteredOrders.length > 0 ? (totalSales / filteredOrders.length).toFixed(2) : '0.00'}</div></div>
                 <div className="p-4 md:p-5 bg-rose-50/50 rounded-2xl border border-rose-100"><div className="text-rose-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowDownCircle size={18} /> Custos do Período</div><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalCosts)}</div></div>
                 <div className={`p-4 md:p-5 rounded-2xl border ${lucroLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}><div className={`text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2 ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}><TrendingUp size={18} /> Lucro Líquido</div><div className={`text-3xl md:text-4xl font-black ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatMoney(lucroLiquido)}</div></div>
+                <div className="p-4 md:p-5 bg-orange-50/50 rounded-2xl border border-orange-100 md:col-span-2"><div className="text-orange-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Package size={18} /> CMV — Custo de Mercadoria Vendida</div><div className="flex items-end gap-4"><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(cmvTotal)}</div><div className="text-lg font-black text-orange-600 mb-1">{cmvPercent}% do faturamento</div></div><div className="text-xs text-orange-600 font-medium mt-1">Margem bruta: {formatMoney(totalSales - cmvTotal)} ({totalSales > 0 ? (((totalSales - cmvTotal)/totalSales)*100).toFixed(1) : '0.0'}%)</div></div>
               </div>
               
               <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-2">
@@ -3025,7 +3049,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="space-y-4 mb-6 md:mb-8 p-4 md:p-6 bg-slate-50 rounded-2xl border border-slate-100">
                   <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Nome do Produto</label><input value={newProdName} onChange={(e) => setNewProdName(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="Ex: X-Tudo, Bolo de Cenoura..." /></div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-5">
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="0.00" /></div>
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-2">Preço (R$)</label><input type="number" step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="0.00" /></div><div><label className="block text-xs font-bold text-rose-500 uppercase mb-2">Custo CMV (R$)</label><input type="number" step="0.01" value={newProdCost} onChange={(e) => setNewProdCost(e.target.value)} className="w-full p-3.5 border border-rose-200 bg-rose-50 rounded-xl outline-none focus:ring-2 focus:ring-rose-100 text-sm font-bold text-rose-800" placeholder="0.00" /></div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Categoria</label>
                       <input type="text" list="cat-list" value={newProdCat} onChange={(e) => setNewProdCat(e.target.value)} className="w-full p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 text-sm" placeholder="Ex: Lanches, Bebidas..." />
@@ -3054,13 +3078,13 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 </div>
                 <div className="overflow-x-auto rounded-2xl border border-slate-200 w-full">
                   <table className="w-full text-left border-collapse min-w-[600px]">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider font-bold"><th className="p-3 md:p-4">Produto</th><th className="p-3 md:p-4">Categoria</th><th className="p-3 md:p-4">Preço</th><th className="p-3 md:p-4 text-center">Estoque</th><th className="p-3 md:p-4 text-right">Ações</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider font-bold"><th className="p-3 md:p-4">Produto</th><th className="p-3 md:p-4">Categoria</th><th className="p-3 md:p-4">Preço</th><th className="p-3 md:p-4 text-center text-rose-600">CMV</th><th className="p-3 md:p-4 text-center">Estoque</th><th className="p-3 md:p-4 text-right">Ações</th></tr></thead>
                     <tbody className="text-xs md:text-sm divide-y divide-slate-100">
                       {products.map(p => (
                         <tr key={p.id} className="hover:bg-blue-50/50 transition-colors group">
                           <td className="p-3 md:p-4 font-bold text-slate-800">{p.name}</td>
                           <td className="p-3 md:p-4"><span className="px-2 md:px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] md:text-xs font-bold">{p.category}</span></td>
-                          <td className="p-3 md:p-4 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td>
+                          <td className="p-3 md:p-4 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td><td className="p-3 md:p-4 text-center"><span className="text-rose-600 font-bold text-xs">R$ {Number(p.cost || 0).toFixed(2)}</span></td>
                           <td className="p-3 md:p-4 text-center"><span className={`px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock < 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{p.stock} un</span></td>
                           <td className="p-3 md:p-4 text-right flex justify-end gap-1 md:gap-2">
                             <button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Edit3 size={14} className="hidden md:block" /> Editar</button>
