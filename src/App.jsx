@@ -266,7 +266,7 @@ const handlePrint = (order, settings, type = 'customer') => {
 };
 
 // --- IMPRESSÃO: RELATÓRIO FINANCEIRO DO DIA/SEMANA/MÊS ---
-const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings, costsData = [], totalCostsData = 0, cmvPrint = 0) => {
+const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings, costsData = [], totalCostsData = 0, cmvPrint = 0, lanchTotal = 0, encTotal = 0, encOrdersList = []) => {
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
   const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
@@ -317,6 +317,11 @@ const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, tot
   <div class="divider"></div>
   <div class="row"><span>Nº de Pedidos</span><span>${orders.length}</span></div>
   <div class="row"><span>Ticket Médio</span><span>R$ ${orders.length > 0 ? (totalSales / orders.length).toFixed(2) : '0.00'}</span></div>
+  <div class="divider"></div>
+  <div class="section">Origem das Vendas</div>
+  <div class="row"><span>🏪 Lanchonete</span><span>R$ ${lanchTotal.toFixed(2)}</span></div>
+  <div class="row"><span>🎂 Encomendas</span><span>R$ ${encTotal.toFixed(2)}</span></div>
+  ${encOrdersList.length > 0 ? '<div class="section" style="margin-top:4px">Detalhamento Encomendas</div>' + encOrdersList.map(o => '<div class="row" style="font-size:10px"><span>' + o.client.replace('Sinal: ','🔸 Sinal: ').replace('Restante: ','✅ Rest: ') + '</span><span>R$ ' + Number(o.total).toFixed(2) + '</span></div>').join('') : ''}
   <div class="divider"></div>
   <div class="sub">Impresso em ${new Date().toLocaleString('pt-BR')}</div>
   <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
@@ -2215,6 +2220,11 @@ const PosView = ({ user, onBack, initialSettings }) => {
   });
   const totalCosts = filteredCosts.reduce((acc, c) => acc + (Number(c.value) || 0), 0);
   const totalSales = filteredOrders.reduce((acc, order) => acc + (Number(order.total) || 0), 0);
+  // Separar lanchonete vs encomendas
+  const encOrders = filteredOrders.filter(o => o.origin === 'Encomenda');
+  const lanchOrders = filteredOrders.filter(o => o.origin !== 'Encomenda');
+  const totalEncomendas = encOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+  const totalLanchonete = lanchOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
   const lucroLiquido = totalSales - totalCosts;
 
   // CMV: custo de mercadoria vendida (qty vendida × custo cadastrado do produto)
@@ -2966,7 +2976,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
               )}
               <div className="flex flex-wrap gap-2 md:gap-3 w-full md:w-auto">
                 <button onClick={triggerClearHistory} className="flex-1 md:flex-none justify-center bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm border border-red-200 flex items-center gap-2 active:scale-95"><Trash2 size={18} /> Apagar Vendas</button>
-                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings, filteredCosts, totalCosts, cmvTotal)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
+                <button onClick={() => handlePrintFinancialReport(filteredOrders, filteredMovements, salesByMethod, totalSales, totalSuprimento, totalSangria, reportDate, reportMode, settings, filteredCosts, totalCosts, cmvTotal, totalLanchonete, totalEncomendas, encOrders)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><Printer size={18}/> Relatório Financeiro</button>
                 <button onClick={() => handlePrintTopSelling(filteredOrders, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex-1 md:flex-none justify-center bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50"><TrendingUp size={18}/> Top Vendidos</button>
                 <button onClick={() => setShowCashMovementModal(true)} className="flex-1 md:flex-none justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 active:scale-95"><ArrowRightLeft size={18} /> Lançar Movimentação</button>
                 <button onClick={() => setShowCostModal(true)} className="flex-1 md:flex-none justify-center bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all shadow-lg flex items-center gap-2 active:scale-95"><DollarSign size={18} /> Lançar Custo</button>
@@ -3005,7 +3015,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="p-4 md:p-5 bg-amber-50/50 rounded-2xl border border-amber-100"><div className="text-amber-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-3xl md:text-4xl font-black text-slate-800">R$ {filteredOrders.length > 0 ? (totalSales / filteredOrders.length).toFixed(2) : '0.00'}</div></div>
                 <div className="p-4 md:p-5 bg-rose-50/50 rounded-2xl border border-rose-100"><div className="text-rose-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowDownCircle size={18} /> Custos do Período</div><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalCosts)}</div></div>
                 <div className={`p-4 md:p-5 rounded-2xl border ${lucroLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}><div className={`text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2 ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}><TrendingUp size={18} /> Lucro Líquido</div><div className={`text-3xl md:text-4xl font-black ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatMoney(lucroLiquido)}</div></div>
-                <div className="p-4 md:p-5 bg-orange-50/50 rounded-2xl border border-orange-100 md:col-span-2"><div className="text-orange-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Package size={18} /> CMV — Custo de Mercadoria Vendida</div><div className="flex items-end gap-4"><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(cmvTotal)}</div><div className="text-lg font-black text-orange-600 mb-1">{cmvPercent}% do faturamento</div></div><div className="text-xs text-orange-600 font-medium mt-1">Margem bruta: {formatMoney(totalSales - cmvTotal)} ({totalSales > 0 ? (((totalSales - cmvTotal)/totalSales)*100).toFixed(1) : '0.0'}%)</div></div>
+                <div className="p-4 md:p-5 bg-pink-50/50 rounded-2xl border border-pink-100"><div className="text-pink-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Cake size={18} /> 🎂 Encomendas</div><div className="flex items-end gap-4"><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalEncomendas)}</div><div className="text-sm font-bold text-pink-600 mb-1">{encOrders.length} pedido(s)</div></div><div className="text-xs text-pink-500 font-medium mt-1">Lanchonete: {formatMoney(totalLanchonete)}</div></div>
+                <div className="p-4 md:p-5 bg-orange-50/50 rounded-2xl border border-orange-100"><div className="text-orange-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Package size={18} /> CMV — Custo de Mercadoria Vendida</div><div className="flex items-end gap-4"><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(cmvTotal)}</div><div className="text-lg font-black text-orange-600 mb-1">{cmvPercent}% do faturamento</div></div><div className="text-xs text-orange-600 font-medium mt-1">Margem bruta: {formatMoney(totalSales - cmvTotal)} ({totalSales > 0 ? (((totalSales - cmvTotal)/totalSales)*100).toFixed(1) : '0.0'}%)</div></div>
               </div>
               
               <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-2">
@@ -3017,6 +3028,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       <tr className="hover:bg-slate-50 transition-colors"><td className="p-3 md:p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-teal-400"></div> PIX</td><td className="p-3 md:p-4 text-right font-mono text-sm md:text-base font-medium">R$ {salesByMethod.pix.toFixed(2)}</td></tr>
                       <tr className="hover:bg-slate-50 transition-colors"><td className="p-3 md:p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-emerald-400"></div> Dinheiro</td><td className="p-3 md:p-4 text-right font-mono text-sm md:text-base font-medium">R$ {salesByMethod.dinheiro.toFixed(2)}</td></tr>
                       <tr className="hover:bg-slate-50 transition-colors"><td className="p-3 md:p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-indigo-400"></div> Cartão (Déb/Créd)</td><td className="p-3 md:p-4 text-right font-mono text-sm md:text-base font-medium">R$ {salesByMethod.cartao.toFixed(2)}</td></tr>
+                      <tr className="hover:bg-slate-50 transition-colors"><td className="p-3 md:p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-300"></div> 🏪 Lanchonete</td><td className="p-3 md:p-4 text-right font-mono text-sm md:text-base font-medium">R$ {totalLanchonete.toFixed(2)}</td></tr>
+                      <tr className="hover:bg-slate-50 transition-colors"><td className="p-3 md:p-4 font-bold text-slate-700 flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-pink-400"></div> 🎂 Encomendas</td><td className="p-3 md:p-4 text-right font-mono text-sm md:text-base font-medium">R$ {totalEncomendas.toFixed(2)}</td></tr>
                       <tr className="bg-slate-50 border-t-2 border-slate-200"><td className="p-4 md:p-5 font-black text-slate-800 uppercase text-xs md:text-sm">Total Consolidado</td><td className="p-4 md:p-5 text-right font-black text-slate-900 font-mono text-lg md:text-xl text-blue-600">R$ {totalSales.toFixed(2)}</td></tr>
                     </tbody>
                   </table>
@@ -3149,7 +3162,10 @@ const PosView = ({ user, onBack, initialSettings }) => {
               {historyOrders.map(order => (
                 <div key={order.id} className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
-                    <div className="font-bold text-base md:text-lg text-slate-800">{order.client}</div>
+                    <div className="font-bold text-base md:text-lg text-slate-800 flex items-center gap-2">
+                      {order.origin === 'Encomenda' && <span className="text-xs font-black bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full border border-pink-200">🎂 Encomenda</span>}
+                      {order.client}
+                    </div>
                     <div className="text-xs md:text-sm text-slate-500">{new Date(order.paidAt || order.date).toLocaleString('pt-BR')} • {order.method}</div>
                   </div>
                   <div className="text-left md:text-right w-full md:w-auto flex justify-between md:block items-center">
