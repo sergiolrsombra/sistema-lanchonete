@@ -880,6 +880,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoryOrder, setCategoryOrder] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -908,10 +909,19 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         setOrderCounter(maxId + 1);
       }
     });
+    // Carregar ordem das categorias
+    getDoc(getDocRef('app_state', 'category_order')).then(snap => {
+      if (snap.exists()) setCategoryOrder(snap.data().order || []);
+    }).catch(() => {});
     return () => { unsubProd(); unsubOrders(); };
   }, [user]);
 
   const showToastMsg = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
+  const getMobileOrderedCategories = () => {
+    const saved = categoryOrder.filter(c => categories.includes(c));
+    const unsaved = categories.filter(c => !saved.includes(c));
+    return [...saved, ...unsaved];
+  };
 
 
 
@@ -1201,7 +1211,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
               <button onClick={handleAiSuggestion} className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-2 rounded-lg shadow-md animate-pulse hover:opacity-90 active:scale-95"><Sparkles size={20}/></button>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
-              {categories.map(c => (
+              {getMobileOrderedCategories().map(c => (
                 <button key={c} onClick={() => setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${selectedCategory === c ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{c}</button>
               ))}
             </div>
@@ -1349,6 +1359,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [renameModal, setRenameModal] = useState({ show: false, oldName: '', newName: '' });
 
   const [categories, setCategories] = useState([]);
+  const [categoryOrder, setCategoryOrder] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1471,6 +1483,14 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))); });
     const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
     const unsubCosts = onSnapshot(query(getCollectionRef('costs')), (snap) => { setCosts(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a,b) => (b.date||'').localeCompare(a.date||''))); });
+    // Carregar ordem das categorias
+    const loadCatOrder = async () => {
+      try {
+        const snap = await getDoc(getDocRef('app_state', 'category_order'));
+        if (snap.exists()) setCategoryOrder(snap.data().order || []);
+      } catch(e) {}
+    };
+    loadCatOrder();
     return () => { unsubProd(); unsubOrders(); unsubMove(); unsubFuture(); unsubCosts(); };
   }, [user]);
 
@@ -2044,6 +2064,38 @@ const PosView = ({ user, onBack, initialSettings }) => {
       console.error("Erro no saveSettings", e); 
       showToastMsg("Erro ao salvar: " + e.message, "error"); 
     }
+  };
+
+  const saveCategoryOrder = async (newOrder) => {
+    setCategoryOrder(newOrder);
+    try { await setDoc(getDocRef('app_state', 'category_order'), { order: newOrder }); }
+    catch(e) { console.error(e); }
+  };
+
+  const moveCategoryUp = (cat) => {
+    const ordered = getOrderedCategories();
+    const idx = ordered.indexOf(cat);
+    if (idx <= 0) return;
+    const newOrder = [...ordered];
+    [newOrder[idx-1], newOrder[idx]] = [newOrder[idx], newOrder[idx-1]];
+    saveCategoryOrder(newOrder);
+  };
+
+  const moveCategoryDown = (cat) => {
+    const ordered = getOrderedCategories();
+    const idx = ordered.indexOf(cat);
+    if (idx >= ordered.length - 1) return;
+    const newOrder = [...ordered];
+    [newOrder[idx], newOrder[idx+1]] = [newOrder[idx+1], newOrder[idx]];
+    saveCategoryOrder(newOrder);
+  };
+
+  const getOrderedCategories = () => {
+    // Merge saved order with current categories (handles new categories)
+    const current = [...new Set(products.map(p => p.category).filter(Boolean))];
+    const saved = categoryOrder.filter(c => current.includes(c));
+    const unsaved = current.filter(c => !saved.includes(c));
+    return [...saved, ...unsaved];
   };
 
   const handleAddCost = async () => {
@@ -2752,7 +2804,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
           <div className="flex h-[calc(100vh-4rem)] md:h-screen relative">
             <div className="flex-1 p-4 md:p-6 overflow-y-auto bg-slate-50 pb-28 md:pb-6">
               <h1 className="text-2xl font-bold mb-6">Novo Pedido (Balcão)</h1>
-              <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl"><div className="flex gap-2 mb-3"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18} /><input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none" /></div></div><div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">{categories.map(c => <button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory===c?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{c}</button>)}</div></div>
+              <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl"><div className="flex gap-2 mb-3"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18} /><input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none" /></div></div><div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">{getOrderedCategories().map(c => <button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory===c?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{c}</button>)}</div></div>
               <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar"><Users size={18} className="text-slate-400 mr-1 shrink-0" />{guestList.map(g => (<div key={g} className={`flex items-center rounded-full border shrink-0 ${currentGuest===g?'bg-indigo-600 text-white':'bg-slate-50 text-slate-600'}`}><button onClick={()=>setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold">{g}</button>{currentGuest===g && <button onClick={()=>setRenameModal({show:true,oldName:g,newName:g})} className="pr-3 pl-1 py-1.5"><Edit3 size={12}/></button>}</div>))}<button onClick={()=>{const nG=`Pessoa ${guestList.length+1}`;setGuestList([...guestList,nG]);setCurrentGuest(nG);}} className="px-4 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-slate-400 flex items-center gap-1 shrink-0"><Plus size={12}/> Add Pessoa</button></div>
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-24">
                 {filtered.map(p => (
@@ -3089,24 +3141,49 @@ const PosView = ({ user, onBack, initialSettings }) => {
                     <PlusCircle size={16}/> Repor Tudo (50 un)
                   </button>
                 </div>
-                <div className="overflow-x-auto rounded-2xl border border-slate-200 w-full">
-                  <table className="w-full text-left border-collapse min-w-[600px]">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] md:text-xs uppercase tracking-wider font-bold"><th className="p-3 md:p-4">Produto</th><th className="p-3 md:p-4">Categoria</th><th className="p-3 md:p-4">Preço</th><th className="p-3 md:p-4 text-center text-rose-600">CMV</th><th className="p-3 md:p-4 text-center">Estoque</th><th className="p-3 md:p-4 text-right">Ações</th></tr></thead>
-                    <tbody className="text-xs md:text-sm divide-y divide-slate-100">
-                      {products.map(p => (
-                        <tr key={p.id} className="hover:bg-blue-50/50 transition-colors group">
-                          <td className="p-3 md:p-4 font-bold text-slate-800">{p.name}</td>
-                          <td className="p-3 md:p-4"><span className="px-2 md:px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] md:text-xs font-bold">{p.category}</span></td>
-                          <td className="p-3 md:p-4 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td><td className="p-3 md:p-4 text-center"><span className="text-rose-600 font-bold text-xs">R$ {Number(p.cost || 0).toFixed(2)}</span></td>
-                          <td className="p-3 md:p-4 text-center"><span className={`px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock < 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{p.stock} un</span></td>
-                          <td className="p-3 md:p-4 text-right flex justify-end gap-1 md:gap-2">
-                            <button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Edit3 size={14} className="hidden md:block" /> Editar</button>
-                            <button onClick={() => confirmDeleteProduct(p)} className="text-red-600 bg-red-50 hover:bg-red-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Trash2 size={14} className="hidden md:block" /> Excluir</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-4">
+                  {getOrderedCategories().map((cat, catIdx) => {
+                    const catProducts = products.filter(p => p.category === cat);
+                    if (catProducts.length === 0) return null;
+                    const orderedCats = getOrderedCategories();
+                    return (
+                      <div key={cat} className="rounded-2xl border border-slate-200 overflow-hidden">
+                        {/* Cabeçalho da categoria */}
+                        <div className="bg-slate-800 text-white px-4 py-3 flex justify-between items-center">
+                          <span className="font-black text-sm tracking-wide uppercase">{cat}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400 font-medium">{catProducts.length} produto(s)</span>
+                            <div className="flex gap-1">
+                              <button onClick={() => moveCategoryUp(cat)} disabled={catIdx === 0} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-30 transition-colors" title="Mover categoria para cima"><ChevronLeft size={14} className="rotate-90"/></button>
+                              <button onClick={() => moveCategoryDown(cat)} disabled={catIdx === orderedCats.length - 1} className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg disabled:opacity-30 transition-colors" title="Mover categoria para baixo"><ChevronRight size={14} className="rotate-90"/></button>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Produtos da categoria */}
+                        <table className="w-full text-left">
+                          <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase tracking-wider font-bold border-b border-slate-100">
+                            <tr><th className="px-4 py-2">Produto</th><th className="px-4 py-2">Preço</th><th className="px-4 py-2 text-rose-500">CMV</th><th className="px-4 py-2 text-center">Estoque</th><th className="px-4 py-2 text-right">Ações</th></tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-xs md:text-sm">
+                            {catProducts.map(p => (
+                              <tr key={p.id} className="hover:bg-blue-50/50 transition-colors">
+                                <td className="px-4 py-3 font-bold text-slate-800">{p.name}</td>
+                                <td className="px-4 py-3 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td>
+                                <td className="px-4 py-3"><span className="text-rose-600 font-bold">R$ {Number(p.cost || 0).toFixed(2)}</span></td>
+                                <td className="px-4 py-3 text-center"><span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock < 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{p.stock} un</span></td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="flex justify-end gap-1 md:gap-2">
+                                    <button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Edit3 size={14} className="hidden md:block"/> Editar</button>
+                                    <button onClick={() => confirmDeleteProduct(p)} className="text-red-600 bg-red-50 hover:bg-red-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Trash2 size={14} className="hidden md:block"/> Excluir</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
