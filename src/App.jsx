@@ -1361,7 +1361,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [categories, setCategories] = useState([]);
   const [categoryOrder, setCategoryOrder] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [cart, setCart] = useState([]);
