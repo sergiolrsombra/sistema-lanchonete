@@ -265,6 +265,61 @@ const handlePrint = (order, settings, type = 'customer') => {
   printWindow.document.close();
 };
 
+// --- IMPRESSÃO: RECIBO DE ENCOMENDA ---
+const handlePrintOrderReceipt = (order, settings) => {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+  const storeName = settings?.storeName || 'CAFÉ DA PRAÇA';
+  const storePhone = settings?.phone || '';
+  const storeAddress = settings?.address || '';
+  const [y, m, d] = (order.deliveryDate || '').split('-');
+  const deliveryStr = order.deliveryDate ? d + '/' + m + '/' + y + ' às ' + (order.deliveryTime || '') : '—';
+  const signal = Number(order.signal || 0);
+  const total = Number(order.total || 0);
+  const remaining = total - signal;
+  const content = `<!DOCTYPE html><html><head><title>Recibo de Encomenda</title>
+  <style>
+    @page { margin: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; width: 76mm; padding: 3mm; color: #000; font-weight: 700; font-size: 12px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h2 { margin: 0; font-size: 16px; font-weight: 900; text-align: center; }
+    .center { text-align: center; }
+    .sub { font-size: 10px; text-align: center; margin-bottom: 4px; font-weight: 700; }
+    .divider { border-top: 2px dashed #000; margin: 6px 0; }
+    .section { font-size: 11px; font-weight: 900; text-transform: uppercase; margin: 6px 0 3px; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px; }
+    .desc { font-size: 11px; line-height: 1.5; margin: 4px 0; white-space: pre-wrap; }
+    .total { font-size: 14px; font-weight: 900; }
+    .remaining { font-size: 13px; font-weight: 900; color: #dc2626; }
+    .paid { font-size: 11px; color: #16a34a; font-weight: 900; }
+    .badge { background: #fce7f3; border: 1px solid #f9a8d4; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 900; display: inline-block; margin-bottom: 4px; }
+  </style></head><body>
+  <h2>${storeName}</h2>
+  ${storeAddress ? '<div class="sub">' + storeAddress + '</div>' : ''}
+  ${storePhone ? '<div class="sub">Tel: ' + storePhone + '</div>' : ''}
+  <div class="divider"></div>
+  <div class="center"><div class="badge">🎂 RECIBO DE ENCOMENDA</div></div>
+  <div class="section">Dados do Cliente</div>
+  <div class="row"><span>Cliente:</span><span>${order.client || '—'}</span></div>
+  ${order.phone ? '<div class="row"><span>Telefone:</span><span>' + order.phone + '</span></div>' : ''}
+  <div class="divider"></div>
+  <div class="section">Detalhes da Encomenda</div>
+  <div class="row"><span>Entrega:</span><span>${deliveryStr}</span></div>
+  ${order.description ? '<div class="desc">' + order.description + '</div>' : ''}
+  <div class="divider"></div>
+  <div class="section">Valores</div>
+  <div class="row total"><span>TOTAL DA ENCOMENDA:</span><span>R$ ${total.toFixed(2)}</span></div>
+  ${signal > 0 ? '<div class="row paid"><span>✅ Sinal Recebido (' + (order.signalMethod || 'Pix') + '):</span><span>R$ ' + signal.toFixed(2) + '</span></div>' : ''}
+  ${remaining > 0 && signal > 0 ? '<div class="row remaining"><span>⏳ Restante na Entrega:</span><span>R$ ' + remaining.toFixed(2) + '</span></div>' : ''}
+  ${remaining <= 0 ? '<div class="row paid"><span>✅ PAGO INTEGRALMENTE</span></div>' : ''}
+  <div class="divider"></div>
+  <div class="sub">Emitido em ${new Date().toLocaleString('pt-BR')}</div>
+  <div class="sub" style="margin-top:4px">Obrigado pela preferência! 🎂</div>
+  <script>window.onload=function(){setTimeout(function(){window.print();window.close();},500);}</script>
+  </body></html>`;
+  printWindow.document.write(content);
+  printWindow.document.close();
+};
+
 // --- IMPRESSÃO: RELATÓRIO FINANCEIRO DO DIA/SEMANA/MÊS ---
 const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, totalSup, totalSang, reportDate, reportMode, settings, costsData = [], totalCostsData = 0, cmvPrint = 0, lanchTotal = 0, encTotal = 0, encOrdersList = []) => {
   const printWindow = window.open('', '_blank');
@@ -3000,6 +3055,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
                       <button onClick={(e) => { e.stopPropagation(); setSelectedFutureOrder(order); }} className="flex-1 md:flex-none text-xs text-emerald-600 hover:text-emerald-800 font-bold px-4 py-2 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1"><CheckSquare size={14}/> Finalizar Entrega</button>
                     )}
                     <button onClick={(e) => { e.stopPropagation(); openEditOrderModal(order); }} className="flex-1 md:flex-none text-xs text-blue-600 hover:text-blue-800 font-bold px-4 py-2 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-1"><Edit3 size={14}/> Editar</button>
+                    <button onClick={(e) => { e.stopPropagation(); handlePrintOrderReceipt(order, settings); }} className="flex-1 md:flex-none text-xs text-indigo-600 hover:text-indigo-800 font-bold px-4 py-2 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors flex items-center justify-center gap-1"><Printer size={14}/> Recibo</button>
                     <button onClick={(e) => { e.stopPropagation(); setConfirmState({ isOpen: true, msg: 'Excluir Encomenda?', action: async () => { await deleteDoc(getDocRef('future_orders', order.firestoreId)); setConfirmState({isOpen:false}); showToastMsg("Excluída!"); } }); }} className="text-xs text-red-500 hover:text-red-700 font-bold z-10 px-4 py-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-1"><Trash2 size={14}/> Excluir</button>
                   </div>
                 </div>
