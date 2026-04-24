@@ -352,19 +352,17 @@ const handlePrintFinancialReport = (orders, movements, byMethod, totalSales, tot
   <div class="row"><span>💵 Dinheiro</span><span>R$ ${byMethod.dinheiro.toFixed(2)}</span></div>
   <div class="row"><span>💳 Cartão</span><span>R$ ${byMethod.cartao.toFixed(2)}</span></div>
   <div class="divider"></div>
-  <div class="row total"><span>TOTAL VENDAS</span><span>R$ ${totalSales.toFixed(2)}</span></div>
+  <div class="row total"><span>FATURAMENTO BRUTO</span><span>R$ ${totalSales.toFixed(2)}</span></div>
+  <div class="row"><span>(-) CMV</span><span>R$ ${cmvPrint.toFixed(2)}</span></div>
+  <div class="row"><span>(=) Lucro Bruto</span><span>R$ ${(totalSales - cmvPrint).toFixed(2)}</span></div>
   <div class="divider"></div>
-  <div class="section">Custos do Período</div>
+  <div class="section">(-) Custos do Período</div>
   ${costsData.length > 0 ? costsData.map(c => '<div class="row"><span>' + (c.description||c.category) + '</span><span>R$ ' + Number(c.value).toFixed(2) + '</span></div>').join('') : '<div class="row"><span>Nenhum custo lançado</span></div>'}
   <div class="divider"></div>
   <div class="row total"><span>TOTAL CUSTOS</span><span>R$ ${totalCostsData.toFixed(2)}</span></div>
   <div class="divider"></div>
-  <div class="row lucro" style="color:${totalSales - totalCostsData >= 0 ? '#16a34a' : '#dc2626'}"><span>LUCRO LÍQUIDO</span><span>R$ ${(totalSales - totalCostsData).toFixed(2)}</span></div>
-  <div class="divider"></div>
-  <div class="section">CMV — Custo de Mercadoria Vendida</div>
-  <div class="row"><span>CMV Total</span><span>R$ ${cmvPrint.toFixed(2)}</span></div>
-  <div class="row"><span>CMV %</span><span>${totalSales > 0 ? ((cmvPrint/totalSales)*100).toFixed(1) : '0.0'}%</span></div>
-  <div class="row"><span>Margem Bruta</span><span>R$ ${(totalSales - cmvPrint).toFixed(2)}</span></div>
+  <div class="row lucro" style="color:${(totalSales - cmvPrint - totalCostsData) >= 0 ? '#16a34a' : '#dc2626'}"><span>(=) LUCRO LÍQUIDO</span><span>R$ ${(totalSales - cmvPrint - totalCostsData).toFixed(2)}</span></div>
+
   <div class="divider"></div>
   <div class="section">Movimentações de Caixa</div>
   <div class="row"><span>⬆️ Suprimento</span><span>R$ ${totalSup.toFixed(2)}</span></div>
@@ -2331,7 +2329,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const lanchOrders = filteredOrders.filter(o => o.origin !== 'Encomenda');
   const totalEncomendas = encOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
   const totalLanchonete = lanchOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
-  const lucroLiquido = totalSales - totalCosts;
+
 
   // CMV: custo de mercadoria vendida (qty vendida × custo cadastrado do produto)
   const cmvTotal = filteredOrders.reduce((acc, order) => {
@@ -2347,6 +2345,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
     return acc;
   }, 0);
   const cmvPercent = totalSales > 0 ? ((cmvTotal / totalSales) * 100).toFixed(1) : '0.0';
+  const lucroBruto = totalSales - cmvTotal;           // Faturamento - CMV
+  const lucroLiquido = lucroBruto - totalCosts;        // Lucro Bruto - Custos do Período
   const salesByMethod = filteredOrders.reduce((acc, order) => {
     if (order.payments && Array.isArray(order.payments)) {
       order.payments.forEach(p => { const val = Number(p.value) || 0; if (p.method === 'Dinheiro') acc.dinheiro += val; else if (p.method === 'Pix') acc.pix += val; else if (['Crédito', 'Débito'].includes(p.method)) acc.cartao += val; });
@@ -3117,13 +3117,31 @@ const PosView = ({ user, onBack, initialSettings }) => {
               </div>
               
               <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-                <div className="p-4 md:p-5 bg-blue-50/50 rounded-2xl border border-blue-100"><div className="text-blue-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><DollarSign size={18} /> Faturamento Bruto</div><div className="text-3xl md:text-4xl font-black text-slate-800">R$ {totalSales.toFixed(2)}</div></div>
-                <div className="p-4 md:p-5 bg-purple-50/50 rounded-2xl border border-purple-100"><div className="text-purple-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ShoppingCart size={18} /> Volume de Vendas</div><div className="text-3xl md:text-4xl font-black text-slate-800">{filteredOrders.length} <span className="text-sm md:text-lg text-slate-500 font-medium">pedidos</span></div></div>
-                <div className="p-4 md:p-5 bg-amber-50/50 rounded-2xl border border-amber-100"><div className="text-amber-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div><div className="text-3xl md:text-4xl font-black text-slate-800">R$ {filteredOrders.length > 0 ? (totalSales / filteredOrders.length).toFixed(2) : '0.00'}</div></div>
-                <div className="p-4 md:p-5 bg-rose-50/50 rounded-2xl border border-rose-100"><div className="text-rose-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowDownCircle size={18} /> Custos do Período</div><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalCosts)}</div></div>
-                <div className={`p-4 md:p-5 rounded-2xl border ${lucroLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}><div className={`text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2 ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}><TrendingUp size={18} /> Lucro Líquido</div><div className={`text-3xl md:text-4xl font-black ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatMoney(lucroLiquido)}</div></div>
+                <div className="p-4 md:p-5 bg-blue-50/50 rounded-2xl border border-blue-100">
+                  <div className="text-blue-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><DollarSign size={18} /> Faturamento Bruto</div>
+                  <div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalSales)}</div>
+                  <div className="text-xs text-slate-400 mt-1">{filteredOrders.length} pedido(s) • Ticket médio: {formatMoney(filteredOrders.length > 0 ? totalSales / filteredOrders.length : 0)}</div>
+                </div>
+                <div className="p-4 md:p-5 bg-orange-50/50 rounded-2xl border border-orange-100">
+                  <div className="text-orange-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Package size={18} /> (-) CMV</div>
+                  <div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(cmvTotal)}</div>
+                  <div className="text-xs text-orange-500 mt-1">{cmvPercent}% do faturamento</div>
+                </div>
+                <div className={`p-4 md:p-5 rounded-2xl border ${lucroBruto >= 0 ? 'bg-teal-50/50 border-teal-100' : 'bg-red-50/50 border-red-100'}`}>
+                  <div className={`text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2 ${lucroBruto >= 0 ? 'text-teal-700' : 'text-red-700'}`}><TrendingUp size={18} /> (=) Lucro Bruto</div>
+                  <div className={`text-3xl md:text-4xl font-black ${lucroBruto >= 0 ? 'text-teal-700' : 'text-red-700'}`}>{formatMoney(lucroBruto)}</div>
+                  <div className="text-xs text-slate-400 mt-1">{totalSales > 0 ? ((lucroBruto/totalSales)*100).toFixed(1) : '0.0'}% margem bruta</div>
+                </div>
+                <div className="p-4 md:p-5 bg-rose-50/50 rounded-2xl border border-rose-100">
+                  <div className="text-rose-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><ArrowDownCircle size={18} /> (-) Custos do Período</div>
+                  <div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalCosts)}</div>
+                </div>
+                <div className={`p-4 md:p-5 rounded-2xl border md:col-span-2 ${lucroLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}>
+                  <div className={`text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2 ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}><TrendingUp size={18} /> (=) Lucro Líquido</div>
+                  <div className={`text-4xl md:text-5xl font-black ${lucroLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatMoney(lucroLiquido)}</div>
+                  <div className="text-xs text-slate-400 mt-1">{totalSales > 0 ? ((lucroLiquido/totalSales)*100).toFixed(1) : '0.0'}% margem líquida</div>
+                </div>
                 <div className="p-4 md:p-5 bg-pink-50/50 rounded-2xl border border-pink-100"><div className="text-pink-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Cake size={18} /> 🎂 Encomendas</div><div className="flex items-end gap-4"><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalEncomendas)}</div><div className="text-sm font-bold text-pink-600 mb-1">{encOrders.length} pedido(s)</div></div><div className="text-xs text-pink-500 font-medium mt-1">Lanchonete: {formatMoney(totalLanchonete)}</div></div>
-                <div className="p-4 md:p-5 bg-orange-50/50 rounded-2xl border border-orange-100"><div className="text-orange-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Package size={18} /> CMV — Custo de Mercadoria Vendida</div><div className="flex items-end gap-4"><div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(cmvTotal)}</div><div className="text-lg font-black text-orange-600 mb-1">{cmvPercent}% do faturamento</div></div><div className="text-xs text-orange-600 font-medium mt-1">Margem bruta: {formatMoney(totalSales - cmvTotal)} ({totalSales > 0 ? (((totalSales - cmvTotal)/totalSales)*100).toFixed(1) : '0.0'}%)</div></div>
               </div>
               
               <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-2">
