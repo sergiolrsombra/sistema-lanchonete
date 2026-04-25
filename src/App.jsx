@@ -2859,7 +2859,28 @@ const PosView = ({ user, onBack, initialSettings }) => {
             <div className="flex-1 p-4 md:p-6 overflow-y-auto bg-slate-50 pb-28 md:pb-6">
               <h1 className="text-2xl font-bold mb-6">Novo Pedido (Balcão)</h1>
               <div className="bg-white p-4 mb-4 sticky top-0 z-10 border-b shadow-sm rounded-xl"><div className="flex gap-2 mb-3"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 text-slate-400" size={18} /><input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full bg-slate-100 pl-10 p-2 rounded-lg text-sm outline-none" /></div></div><div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">{getOrderedCategories().map(c => <button key={c} onClick={()=>setSelectedCategory(c)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${selectedCategory===c?'bg-slate-900 text-white':'bg-slate-100 text-slate-600'}`}>{c}</button>)}</div></div>
-              <div className="bg-white p-3 mb-6 flex items-center gap-2 overflow-x-auto shadow-sm rounded-xl border border-slate-200 hide-scrollbar"><Users size={18} className="text-slate-400 mr-1 shrink-0" />{guestList.map(g => (<div key={g} className={`flex items-center rounded-full border shrink-0 ${currentGuest===g?'bg-indigo-600 text-white':'bg-slate-50 text-slate-600'}`}><button onClick={()=>setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold">{g}</button>{currentGuest===g && <button onClick={()=>setRenameModal({show:true,oldName:g,newName:g})} className="pr-3 pl-1 py-1.5"><Edit3 size={12}/></button>}</div>))}<button onClick={()=>{const nG=`Pessoa ${guestList.length+1}`;setGuestList([...guestList,nG]);setCurrentGuest(nG);}} className="px-4 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-slate-400 flex items-center gap-1 shrink-0"><Plus size={12}/> Add Pessoa</button></div>
+              {(() => {
+                const existingTab = orders.find(o => o.paymentStatus === 'ABERTO' && o.client?.toLowerCase().trim() === customerName?.toLowerCase().trim());
+                const tabGuests = existingTab ? [...new Set((existingTab.items || []).map(i => i.guest || 'Pessoa 1'))] : [];
+                return (
+                  <div className="bg-white p-3 mb-3 rounded-xl border border-slate-200 shadow-sm">
+                    {existingTab && tabGuests.length > 0 && (
+                      <div className="mb-2 flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-indigo-600">Comanda de {existingTab.client}:</span>
+                        {tabGuests.map(g => (
+                          <button key={g} onClick={() => { setCurrentGuest(g); if (!guestList.includes(g)) setGuestList([...guestList, g]); }} className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${currentGuest===g?'bg-indigo-600 text-white border-indigo-600':'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'}`}>{g}</button>
+                        ))}
+                        <span className="text-xs text-slate-400">← selecione para quem é o novo item</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+                      <Users size={18} className="text-slate-400 mr-1 shrink-0" />
+                      {guestList.map(g => (<div key={g} className={`flex items-center rounded-full border shrink-0 ${currentGuest===g?'bg-indigo-600 text-white':'bg-slate-50 text-slate-600'}`}><button onClick={()=>setCurrentGuest(g)} className="px-4 py-1.5 text-xs font-bold">{g}</button>{currentGuest===g && <button onClick={()=>setRenameModal({show:true,oldName:g,newName:g})} className="pr-3 pl-1 py-1.5"><Edit3 size={12}/></button>}</div>))}
+                      <button onClick={()=>{const nG=`Pessoa ${guestList.length+1}`;setGuestList([...guestList,nG]);setCurrentGuest(nG);}} className="px-4 py-1.5 rounded-full text-xs font-bold bg-white border border-dashed border-slate-400 flex items-center gap-1 shrink-0"><Plus size={12}/> Add Pessoa</button>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-24">
                 {filtered.map(p => (
                   <button key={p.id} onClick={()=>addToCart(p)} disabled={p.stock<=0} className={`bg-white p-4 rounded-2xl shadow-sm border flex flex-col text-left active:scale-95 ${p.stock<=0?'opacity-50':''}`}><div className="flex justify-between items-center mb-3 w-full"><div className="bg-blue-50 p-2 rounded-lg"><IconMapper type={p.icon} className="w-5 h-5 text-blue-600" /></div><span className="font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg">{formatMoney(p.price)}</span></div><div className="font-bold text-slate-800 leading-tight mb-1">{p.name}</div><div className="text-xs font-bold text-slate-400">{p.stock} un</div></button>
