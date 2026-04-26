@@ -943,6 +943,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiResponse, setAiResponse] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [existingOrderFound, setExistingOrderFound] = useState(null); // comanda aberta encontrada pelo telefone
 
   const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
 
@@ -980,11 +981,24 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
 
 
 
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    if (!customerName) {
+    if (!customerName.trim()) {
       showToastMsg("Por favor, digite seu nome.", "error");
       return;
+    }
+    // Verifica se já existe comanda aberta com esse telefone
+    if (customerPhone.trim()) {
+      const cleanPhone = customerPhone.replace(/\D/g, '');
+      const snap = await getDocs(query(getCollectionRef('orders')));
+      const found = snap.docs.find(d => {
+        const data = d.data();
+        return data.paymentStatus === 'ABERTO' && data.phone?.replace(/\D/g, '') === cleanPhone;
+      });
+      if (found) {
+        setExistingOrderFound({ firestoreId: found.id, ...found.data() });
+        return; // Não avança ainda — mostra opção ao cliente
+      }
     }
     setView('menu');
   };
@@ -1169,16 +1183,14 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
       msg += `\n💰 *VALOR DESTA ADIÇÃO: R$ ${getCartTotal().toFixed(2)}*\n\n`;
       msg += `Aguardo a confirmação do pedido!`;
 
-      const storePhoneNumber = settings?.phone?.replace(/\D/g, '') || '';
-      if (storePhoneNumber) {
-         window.open(`https://wa.me/55${storePhoneNumber}?text=${encodeURIComponent(msg)}`, '_blank');
-      }
-
+      // Pedido vai direto para a cozinha, sem abrir WhatsApp
+      setExistingOrderFound(null);
       setView('success'); 
       setTimeout(() => { 
         setCart([]); 
         setCustomerName('');
         setCustomerPhone('');
+        setExistingOrderFound(null);
         setView('login'); 
         setIsSubmitting(false); 
       }, 3000);
@@ -1199,7 +1211,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const total = getCartTotal(); 
   const count = cart.reduce((a, i) => a + i.qty, 0);
 
-  if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1><p className="mt-4 text-green-100 text-center">Verifique o seu WhatsApp para concluir o pagamento.</p></div>;
+  if (view === 'success') return <div className="h-screen bg-green-600 flex flex-col items-center justify-center text-white p-8 animate-in fade-in zoom-in-95"><CheckCircle size={80} className="mb-4" /><h1 className="text-3xl font-bold">Pedido Enviado!</h1><p className="mt-4 text-green-100 text-center">Seu pedido foi recebido e já está sendo preparado! 🍽️</p></div>;
 
   return (
     <div className="min-h-screen bg-slate-100 pb-24 font-sans w-full sm:max-w-md mx-auto sm:shadow-2xl relative sm:border-x border-slate-200 animate-in fade-in">
@@ -1249,6 +1261,34 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
                 <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-95 text-lg">Ver Cardápio</button>
               </div>
             </form>
+
+            {/* Comanda em aberto encontrada pelo telefone */}
+            {existingOrderFound && (
+              <div className="mt-4 bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 animate-in fade-in">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="text-2xl">👋</div>
+                  <div>
+                    <div className="font-black text-amber-800 text-lg">Olá, {existingOrderFound.client}!</div>
+                    <div className="text-amber-700 text-sm font-medium mt-1">Encontramos um pedido em aberto no seu número. O que deseja fazer?</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <button onClick={() => {
+                    setCustomerName(existingOrderFound.client);
+                    setExistingOrderFound(null);
+                    setView('menu');
+                  }} className="w-full bg-amber-500 hover:bg-amber-600 text-white py-3.5 rounded-xl font-black transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <PlusCircle size={20}/> Adicionar mais itens ao pedido
+                  </button>
+                  <button onClick={() => {
+                    setExistingOrderFound(null);
+                    setView('menu');
+                  }} className="w-full bg-white border-2 border-slate-200 text-slate-600 py-3 rounded-xl font-bold transition-all active:scale-95 hover:bg-slate-50">
+                    Não sou eu — fazer novo pedido
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
