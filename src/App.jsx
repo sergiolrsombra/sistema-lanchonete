@@ -75,10 +75,10 @@ const DEFAULT_PRODUCTS_SEED = [
   { id: 2, name: 'Tapioca', price: 4.00, category: 'Tapiocas', stock: 50, icon: 'burger' },
   { id: 3, name: 'Cuscuz', price: 4.00, category: 'Cuscuz', stock: 50, icon: 'burger' },
   { id: 8, name: 'Pão na Chapa', price: 3.50, category: 'Pão', stock: 50, icon: 'burger' },
-  { id: 4, name: 'Carne Desfiada 80g', price: 5.00, category: 'Adicionais', stock: 30, icon: 'fries' },
-  { id: 5, name: 'Frango Desfiado 80g', price: 5.00, category: 'Adicionais', stock: 30, icon: 'fries' },
-  { id: 6, name: 'Queijo Fatia', price: 3.00, category: 'Adicionais', stock: 50, icon: 'fries' },
-  { id: 7, name: 'Ovo 1 un', price: 3.00, category: 'Adicionais', stock: 50, icon: 'fries' },
+  { id: 4, name: 'Carne Desfiada 80g', price: 5.00, category: 'Recheio Extra', stock: 30, icon: 'fries' },
+  { id: 5, name: 'Frango Desfiado 80g', price: 5.00, category: 'Recheio Extra', stock: 30, icon: 'fries' },
+  { id: 6, name: 'Queijo Fatia', price: 3.00, category: 'Recheio Extra', stock: 50, icon: 'fries' },
+  { id: 7, name: 'Ovo 1 un', price: 3.00, category: 'Recheio Extra', stock: 50, icon: 'fries' },
 ];
 
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
@@ -1342,8 +1342,8 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
              </div>
 
              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
-               <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seus adicionais</h4>
-               {products.filter(p => p.category === 'Adicionais').map(addon => {
+               <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seu recheio extra</h4>
+               {products.filter(p => p.category === 'Recheio Extra').map(addon => {
                  const qty = addonModalConfig.addons[addon.id] || 0;
                  return (
                    <div key={addon.id} className={`flex justify-between items-center border-2 rounded-2xl p-3 shadow-sm transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/50' : 'bg-white border-slate-100'}`}>
@@ -1359,8 +1359,8 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
                    </div>
                  )
                })}
-               {products.filter(p => p.category === 'Adicionais').length === 0 && (
-                 <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum adicional cadastrado.</div>
+               {products.filter(p => p.category === 'Recheio Extra').length === 0 && (
+                 <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum recheio extra cadastrado.</div>
                )}
              </div>
 
@@ -2734,8 +2734,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
                </div>
 
                <div className="flex-1 overflow-y-auto p-6 space-y-3">
-                 <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seus adicionais</h4>
-                 {products.filter(p => p.category === 'Adicionais').map(addon => {
+                 <h4 className="font-black text-slate-400 text-xs uppercase tracking-wider mb-2">Escolha seu recheio extra</h4>
+                 {products.filter(p => p.category === 'Recheio Extra').map(addon => {
                    const qty = addonModalConfig.addons[addon.id] || 0;
                    return (
                      <div key={addon.id} className={`flex justify-between items-center border-2 rounded-2xl p-3 shadow-sm transition-all ${qty > 0 ? 'border-blue-500 bg-blue-50/50' : 'bg-white border-slate-100'}`}>
@@ -2751,8 +2751,8 @@ const PosView = ({ user, onBack, initialSettings }) => {
                      </div>
                    )
                  })}
-                 {products.filter(p => p.category === 'Adicionais').length === 0 && (
-                   <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum adicional cadastrado.</div>
+                 {products.filter(p => p.category === 'Recheio Extra').length === 0 && (
+                   <div className="text-center text-sm font-medium text-slate-400 py-6">Nenhum recheio extra cadastrado.</div>
                  )}
                </div>
 
