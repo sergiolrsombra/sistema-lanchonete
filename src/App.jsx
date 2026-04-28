@@ -946,7 +946,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
   const [existingOrderFound, setExistingOrderFound] = useState(null); // comanda aberta encontrada pelo telefone
 
   const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
-  const [recheioQuestion, setRecheioQuestion] = useState({ show: false, item: null });
 
   useEffect(() => {
     if (!user) return;
@@ -1008,7 +1007,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
     if (p.stock <= 0) { showToastMsg("Sem estoque!", "error"); return; }
     
     if (BASE_CATEGORIES_FOR_ADDONS.includes(p.category)) {
-      setRecheioQuestion({ show: true, item: p });
+      setAddonModalConfig({ isOpen: true, baseItem: p, addons: {} });
       return;
     }
 
@@ -1330,44 +1329,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         </div>
       )}
       
-      {/* PERGUNTA: DESEJA RECHEIO EXTRA? */}
-      {recheioQuestion.show && recheioQuestion.item && (
-        <div className="fixed inset-0 bg-black/60 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl p-6 animate-in slide-in-from-bottom-full sm:zoom-in-95">
-            <div className="text-center mb-6">
-              <div className="text-4xl mb-3">🫓</div>
-              <h3 className="font-black text-2xl text-slate-800 mb-2">{recheioQuestion.item.name}</h3>
-              <p className="text-slate-500 font-medium">Deseja incluir algum <span className="font-black text-indigo-600">Recheio Extra</span>?</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => {
-                const item = recheioQuestion.item;
-                setRecheioQuestion({ show: false, item: null });
-                // Vai direto para carrinho sem recheio
-                const currentGuestName = 'Pessoa 1';
-                const ex = cart.find(i => (String(i.id) === String(item.id) || (i.firestoreId && i.firestoreId === item.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
-                if (ex) {
-                  setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
-                  showToastMsg(item.name + ' quantidade aumentada!');
-                } else {
-                  setCart([...cart, { ...item, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuestName }]);
-                  showToastMsg(item.name + ' adicionado!');
-                }
-              }} className="py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-lg transition-all active:scale-95">
-                Não 👍
-              </button>
-              <button onClick={() => {
-                const item = recheioQuestion.item;
-                setRecheioQuestion({ show: false, item: null });
-                setAddonModalConfig({ isOpen: true, baseItem: item, addons: {} });
-              }} className="py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-lg shadow-lg transition-all active:scale-95">
-                Sim 🧀
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL DE ADICIONAIS (CLIENTE) */}
       {addonModalConfig.isOpen && addonModalConfig.baseItem && (
         <div className="fixed inset-0 bg-black/60 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
@@ -1571,7 +1532,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
   const [historyMethodFilter, setHistoryMethodFilter] = useState('Todos');
 
   const [addonModalConfig, setAddonModalConfig] = useState({ isOpen: false, baseItem: null, addons: {} });
-  const [recheioQuestion, setRecheioQuestion] = useState({ show: false, item: null });
 
   const clientRef = useRef(null);
   const phoneRef = useRef(null);
@@ -1667,7 +1627,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const currentGuestName = currentGuest || 'Pessoa 1';
 
     if (BASE_CATEGORIES_FOR_ADDONS.includes(p.category)) {
-      setRecheioQuestion({ show: true, item: p });
+      setAddonModalConfig({ isOpen: true, baseItem: p, addons: {} });
       return;
     }
 
@@ -2760,43 +2720,6 @@ const PosView = ({ user, onBack, initialSettings }) => {
         )}
 
         {renameModal.show && <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4"><div className="bg-white rounded-3xl p-6 w-full max-w-sm"><input autoFocus value={renameModal.newName} onChange={e=>setRenameModal({...renameModal,newName:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}}} className="w-full border p-4 rounded-xl mb-6 text-lg font-bold" placeholder="Nome" /><div className="flex gap-2"><button onClick={()=>setRenameModal({show:false,oldName:'',newName:''})} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Cancelar</button><button onClick={()=>{const fn=renameModal.newName.trim()||renameModal.oldName; if(fn!==renameModal.oldName&&!guestList.includes(fn)){setGuestList(guestList.map(g=>g===renameModal.oldName?fn:g)); if(currentGuest===renameModal.oldName)setCurrentGuest(fn); setCart(cart.map(i=>i.guest===renameModal.oldName?{...i,guest:fn}:i));} setRenameModal({show:false,oldName:'',newName:''});}} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">Salvar</button></div></div></div>}
-
-        {/* PERGUNTA: DESEJA RECHEIO EXTRA? (POS) */}
-        {recheioQuestion.show && recheioQuestion.item && (
-          <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 animate-in zoom-in-95">
-              <div className="text-center mb-6">
-                <div className="text-4xl mb-3">🫓</div>
-                <h3 className="font-black text-2xl text-slate-800 mb-2">{recheioQuestion.item.name}</h3>
-                <p className="text-slate-500 font-medium">Deseja incluir algum <span className="font-black text-indigo-600">Recheio Extra</span>?</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => {
-                  const p = recheioQuestion.item;
-                  setRecheioQuestion({ show: false, item: null });
-                  const currentGuestName = currentGuest || 'Pessoa 1';
-                  const ex = cart.find(i => (String(i.id) === String(p.id) || (i.firestoreId && i.firestoreId === p.firestoreId)) && (i.guest || 'Pessoa 1') === currentGuestName && (!i.subItems || i.subItems.length === 0));
-                  if (ex) {
-                    setCart(cart.map(i => i.cartItemId === ex.cartItemId ? { ...i, qty: i.qty + 1 } : i));
-                    showToastMsg(p.name + ' quantidade aumentada!');
-                  } else {
-                    setCart([...cart, { ...p, cartItemId: Date.now().toString() + Math.random().toString(), qty: 1, obs: '', subItems: [], guest: currentGuestName }]);
-                    showToastMsg(p.name + ' adicionado!');
-                  }
-                }} className="py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black text-lg transition-all active:scale-95">
-                  Não 👍
-                </button>
-                <button onClick={() => {
-                  const p = recheioQuestion.item;
-                  setRecheioQuestion({ show: false, item: null });
-                  setAddonModalConfig({ isOpen: true, baseItem: p, addons: {} });
-                }} className="py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-lg shadow-lg transition-all active:scale-95">
-                  Sim 🧀
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* MODAL DE ADICIONAIS (POS) */}
         {addonModalConfig.isOpen && addonModalConfig.baseItem && (
