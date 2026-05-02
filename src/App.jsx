@@ -399,7 +399,7 @@ const handlePrintTopSelling = (orders, reportDate, reportMode, settings) => {
       i.subItems?.forEach(sub => { a[sub.name] = (a[sub.name] || 0) + (sub.qty * i.qty); });
     });
     return a;
-  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 20);
 
   const rows = ranking.map((([n, q], idx) => `<div class="row"><span>${idx+1}. ${n}</span><span>${q} un</span></div>`)).join('') || '<div class="row"><span>Nenhuma venda</span></div>';
 
@@ -3258,7 +3258,12 @@ const PosView = ({ user, onBack, initialSettings }) => {
                 <div className="p-4 md:p-5 bg-blue-50/50 rounded-2xl border border-blue-100">
                   <div className="text-blue-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><DollarSign size={18} /> Faturamento Bruto</div>
                   <div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(totalSales)}</div>
-                  <div className="text-xs text-slate-400 mt-1">{filteredOrders.length} pedido(s) • Ticket médio: {formatMoney(filteredOrders.length > 0 ? totalSales / filteredOrders.length : 0)}</div>
+                  <div className="text-xs text-slate-400 mt-1">{filteredOrders.length} pedido(s)</div>
+                </div>
+                <div className="p-4 md:p-5 bg-amber-50/50 rounded-2xl border border-amber-100">
+                  <div className="text-amber-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><User size={18} /> Ticket Médio</div>
+                  <div className="text-3xl md:text-4xl font-black text-slate-800">{formatMoney(filteredOrders.length > 0 ? totalSales / filteredOrders.length : 0)}</div>
+                  <div className="text-xs text-slate-400 mt-1">por pedido</div>
                 </div>
                 <div className="p-4 md:p-5 bg-orange-50/50 rounded-2xl border border-orange-100">
                   <div className="text-orange-700 text-xs md:text-sm font-bold uppercase mb-2 flex items-center gap-2"><Package size={18} /> (-) CMV</div>
@@ -3300,23 +3305,26 @@ const PosView = ({ user, onBack, initialSettings }) => {
               </div>
               
               <div className="bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-slate-200 lg:col-span-1">
-                <h3 className="font-bold text-lg md:text-xl text-slate-800 mb-4 md:mb-6 flex items-center gap-2"><TrendingUp size={20} className="text-yellow-500" /> Top 10 Mais Vendidos</h3>
-                <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
-                  {(Object.entries(filteredOrders.reduce((a, o) => { 
-                    o.items?.forEach(i => { 
+                <div className="flex justify-between items-center mb-4 md:mb-6">
+                  <h3 className="font-bold text-lg md:text-xl text-slate-800 flex items-center gap-2"><TrendingUp size={20} className="text-yellow-500" /> Top 20 Mais Vendidos</h3>
+                  <button onClick={() => handlePrintTopSelling(filteredOrders, reportDate, reportMode, settings)} disabled={filteredOrders.length === 0} className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold rounded-xl text-xs border border-amber-200 transition-colors disabled:opacity-50 active:scale-95 whitespace-nowrap"><Printer size={14}/> Imprimir</button>
+                </div>
+                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                  {(Object.entries(filteredOrders.reduce((a, o) => {
+                    o.items?.forEach(i => {
                       a[i.name] = (a[i.name] || 0) + i.qty;
                       i.subItems?.forEach(sub => {
                         a[sub.name] = (a[sub.name] || 0) + (sub.qty * i.qty);
                       });
-                    }); 
-                    return a; 
-                  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10)).map(([n, q], i) => (
+                    });
+                    return a;
+                  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 20)).map(([n, q], i) => (
                     <div key={i}>
                       <div className="flex justify-between text-xs md:text-sm mb-1.5"><span className="font-bold text-slate-700 truncate pr-2">{i + 1}. {n}</span><span className="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md shrink-0">{q} un</span></div>
                       <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }}></div></div>
                     </div>
                   ))}
-                  {Object.keys(filteredOrders).length === 0 && <div className="text-slate-400 text-sm text-center font-medium pt-10">Nenhuma venda no período.</div>}
+                  {filteredOrders.length === 0 && <div className="text-slate-400 text-sm text-center font-medium pt-10">Nenhuma venda no período.</div>}
                 </div>
               </div>
               
