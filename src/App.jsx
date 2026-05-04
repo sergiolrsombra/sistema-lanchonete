@@ -1135,8 +1135,6 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
         return data.paymentStatus === 'ABERTO' && data.client?.toLowerCase().trim() === customerName?.toLowerCase().trim();
       });
 
-      let msg = '';
-
       if (existingDoc) {
         const existingData = existingDoc.data();
         const updatedItems = [...(existingData.items || []), ...cartWithStatus];
@@ -1146,7 +1144,7 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
           kitchenStatus: updatedItems.some(i => i.kitchenStatus === 'Pendente') ? 'Pendente' : 'Pronto',
           updatedAt: new Date().toISOString()
         });
-        msg = `*ADICIONANDO AO PEDIDO - ${settings?.storeName}*\n\n`;
+
       } else {
         const orderData = { 
           id: orderCounter, 
@@ -1165,24 +1163,10 @@ const MobileView = ({ user, initialRole, onBack, settings }) => {
           origin: 'WhatsApp' 
         };
         await addDoc(getCollectionRef('orders'), orderData);
-        msg = `*NOVO PEDIDO - ${settings?.storeName}*\n\n`;
+
       }
 
       await batch.commit();
-
-      msg += `👤 *Cliente:* ${customerName}\n`;
-      if (customerPhone) msg += `📞 *Contato:* ${customerPhone}\n`;
-      msg += `🛵 *Tipo:* ${orderType}\n\n`;
-      msg += `*ITENS ${existingDoc ? 'ADICIONADOS' : 'DO PEDIDO'}:*\n`;
-      cart.forEach(item => {
-         msg += `👉 ${item.qty}x ${item.name} - R$ ${calcItemTotal(item).toFixed(2)}\n`;
-         item.subItems?.forEach(sub => {
-             msg += `   + ${sub.qty * item.qty}x ${sub.name}\n`;
-         });
-         if (item.obs) msg += `   *Obs:* ${item.obs}\n`;
-      });
-      msg += `\n💰 *VALOR DESTA ADIÇÃO: R$ ${getCartTotal().toFixed(2)}*\n\n`;
-      msg += `Aguardo a confirmação do pedido!`;
 
       // Pedido vai direto para a cozinha, sem abrir WhatsApp
       setExistingOrderFound(null);
