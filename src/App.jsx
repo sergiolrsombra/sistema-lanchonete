@@ -1476,6 +1476,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const [categories, setCategories] = useState([]);
   const [categoryOrder, setCategoryOrder] = useState([]);
+  const [productOrder, setProductOrder] = useState({}); // { categoryName: [id1, id2, ...] }
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1599,11 +1600,14 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const unsubMove = onSnapshot(query(getCollectionRef('cash_movements')), (snapshot) => { setCashMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))); });
     const unsubFuture = onSnapshot(query(getCollectionRef('future_orders')), (snap) => { setFutureOrders(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a, b) => new Date(a.deliveryDate + 'T' + a.deliveryTime) - new Date(b.deliveryDate + 'T' + b.deliveryTime))); });
     const unsubCosts = onSnapshot(query(getCollectionRef('costs')), (snap) => { setCosts(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a,b) => (b.date||'').localeCompare(a.date||''))); });
-    // Carregar ordem das categorias
+    // Carregar ordem das categorias e produtos
     const loadCatOrder = async () => {
       try {
         const snap = await getDoc(getDocRef('app_state', 'category_order'));
-        if (snap.exists()) setCategoryOrder(snap.data().order || []);
+        if (snap.exists()) {
+          setCategoryOrder(snap.data().order || []);
+          setProductOrder(snap.data().productOrder || {});
+        }
       } catch(e) {}
     };
     loadCatOrder();
@@ -2184,7 +2188,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const saveCategoryOrder = async (newOrder) => {
     setCategoryOrder(newOrder);
-    try { await setDoc(getDocRef('app_state', 'category_order'), { order: newOrder }); }
+    try { await setDoc(getDocRef('app_state', 'category_order'), { order: newOrder, productOrder: productOrder }); }
     catch(e) { console.error(e); }
   };
 
@@ -2195,6 +2199,43 @@ const PosView = ({ user, onBack, initialSettings }) => {
     const newOrder = [...ordered];
     [newOrder[idx-1], newOrder[idx]] = [newOrder[idx], newOrder[idx-1]];
     saveCategoryOrder(newOrder);
+  };
+
+  const getOrderedProducts = (cat) => {
+    const catProds = products.filter(p => p.category === cat);
+    const saved = (productOrder[cat] || []).filter(id => catProds.some(p => String(p.id) === String(id)));
+    const unsaved = catProds.filter(p => !saved.includes(String(p.id)));
+    const orderedIds = [...saved, ...unsaved.map(p => String(p.id))];
+    return orderedIds.map(id => catProds.find(p => String(p.id) === id)).filter(Boolean);
+  };
+
+  const saveProductOrder = async (cat, newOrder) => {
+    const newProductOrder = { ...productOrder, [cat]: newOrder.map(p => String(p.id)) };
+    setProductOrder(newProductOrder);
+    try {
+      await setDoc(getDocRef('app_state', 'category_order'), {
+        order: categoryOrder,
+        productOrder: newProductOrder
+      });
+    } catch(e) { console.error(e); }
+  };
+
+  const moveProductUp = (cat, prodId) => {
+    const ordered = getOrderedProducts(cat);
+    const idx = ordered.findIndex(p => String(p.id) === String(prodId));
+    if (idx <= 0) return;
+    const newOrder = [...ordered];
+    [newOrder[idx-1], newOrder[idx]] = [newOrder[idx], newOrder[idx-1]];
+    saveProductOrder(cat, newOrder);
+  };
+
+  const moveProductDown = (cat, prodId) => {
+    const ordered = getOrderedProducts(cat);
+    const idx = ordered.findIndex(p => String(p.id) === String(prodId));
+    if (idx >= ordered.length - 1) return;
+    const newOrder = [...ordered];
+    [newOrder[idx], newOrder[idx+1]] = [newOrder[idx+1], newOrder[idx]];
+    saveProductOrder(cat, newOrder);
   };
 
   const moveCategoryDown = (cat) => {
@@ -2354,7 +2395,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
 
   const uniqueGuestsInTab = selectedTabToSettle ? [...new Set(safeTabSettleItems.map(i => i.guest || 'Pessoa 1'))] : [...new Set(cart.map(i => i.guest || 'Pessoa 1'))];
 
-  const filtered = products.filter(p => p.category === selectedCategory && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filtered = getOrderedProducts(selectedCategory).filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const getFilteredOrders = () => {
     return orders.filter(o => {
@@ -3365,23 +3406,32 @@ const PosView = ({ user, onBack, initialSettings }) => {
                         {/* Produtos da categoria */}
                         <table className="w-full text-left">
                           <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase tracking-wider font-bold border-b border-slate-100">
-                            <tr><th className="px-4 py-2">Produto</th><th className="px-4 py-2">Preço</th><th className="px-4 py-2 text-rose-500">CMV</th><th className="px-4 py-2 text-center">Estoque</th><th className="px-4 py-2 text-right">Ações</th></tr>
+                            <tr><th className="px-4 py-2 w-8"></th><th className="px-4 py-2">Produto</th><th className="px-4 py-2">Preço</th><th className="px-4 py-2 text-rose-500">CMV</th><th className="px-4 py-2 text-center">Estoque</th><th className="px-4 py-2 text-right">Ações</th></tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 text-xs md:text-sm">
-                            {catProducts.map(p => (
-                              <tr key={p.id} className="hover:bg-blue-50/50 transition-colors">
-                                <td className="px-4 py-3 font-bold text-slate-800">{p.name}</td>
-                                <td className="px-4 py-3 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td>
-                                <td className="px-4 py-3"><span className="text-rose-600 font-bold">R$ {Number(p.cost || 0).toFixed(2)}</span></td>
-                                <td className="px-4 py-3 text-center"><span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock < 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{p.stock} un</span></td>
-                                <td className="px-4 py-3 text-right">
-                                  <div className="flex justify-end gap-1 md:gap-2">
-                                    <button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Edit3 size={14} className="hidden md:block"/> Editar</button>
-                                    <button onClick={() => confirmDeleteProduct(p)} className="text-red-600 bg-red-50 hover:bg-red-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Trash2 size={14} className="hidden md:block"/> Excluir</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
+                            {getOrderedProducts(cat).map((p, pIdx) => {
+                              const orderedProds = getOrderedProducts(cat);
+                              return (
+                                <tr key={p.id} className="hover:bg-blue-50/50 transition-colors">
+                                  <td className="px-2 py-3">
+                                    <div className="flex flex-col gap-0.5">
+                                      <button onClick={() => moveProductUp(cat, p.id)} disabled={pIdx === 0} className="p-0.5 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 transition-colors" title="Mover para cima"><ChevronLeft size={12} className="rotate-90"/></button>
+                                      <button onClick={() => moveProductDown(cat, p.id)} disabled={pIdx === orderedProds.length - 1} className="p-0.5 bg-slate-100 hover:bg-slate-200 rounded disabled:opacity-30 transition-colors" title="Mover para baixo"><ChevronRight size={12} className="rotate-90"/></button>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-slate-800">{p.name}</td>
+                                  <td className="px-4 py-3 font-medium text-slate-700">R$ {Number(p.price).toFixed(2)}</td>
+                                  <td className="px-4 py-3"><span className="text-rose-600 font-bold">R$ {Number(p.cost || 0).toFixed(2)}</span></td>
+                                  <td className="px-4 py-3 text-center"><span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${p.stock <= 5 ? 'bg-red-100 text-red-700' : p.stock < 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{p.stock} un</span></td>
+                                  <td className="px-4 py-3 text-right">
+                                    <div className="flex justify-end gap-1 md:gap-2">
+                                      <button onClick={() => setEditingProduct(p)} className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Edit3 size={14} className="hidden md:block"/> Editar</button>
+                                      <button onClick={() => confirmDeleteProduct(p)} className="text-red-600 bg-red-50 hover:bg-red-100 px-2 md:px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold text-[10px] md:text-xs transition-colors"><Trash2 size={14} className="hidden md:block"/> Excluir</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
