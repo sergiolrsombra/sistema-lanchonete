@@ -84,7 +84,7 @@ const DEFAULT_PRODUCTS_SEED = [
 const MESAS = Array.from({ length: 10 }, (_, i) => `Mesa ${String(i + 1).padStart(2, '0')}`);
 
 // Categorias que abrem o modal de inclusão de porções
-const BASE_CATEGORIES_FOR_ADDONS = ['Tapiocas', 'Cuscuz', 'Pão'];
+const BASE_CATEGORIES_FOR_ADDONS = ['Tapiocas', 'Cuscuz', 'Pão', 'Crepiocas', 'Panquecas'];
 
 // --- HELPERS E COMPONENTES COMPARTILHADOS ---
 const formatMoney = (val) => {
