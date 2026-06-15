@@ -637,6 +637,10 @@ const CashControl = ({ user, orders }) => {
     return acc;
   }, [orders, date]);
 
+  const entryTotal = useMemo(() => {
+    return (parseFloat(pix) || 0) + (parseFloat(cash) || 0) + (parseFloat(card) || 0);
+  }, [pix, cash, card]);
+
   const importFromPos = () => { 
     if (posTotals.total === 0) { 
       setToast({ msg: "Nenhuma venda encontrada nesta data.", type: 'error' }); 
@@ -651,12 +655,17 @@ const CashControl = ({ user, orders }) => {
   const handleSave = async () => { 
     if (!user || isSubmitting) return; 
     const valPix = parseFloat(pix) || 0, valCash = parseFloat(cash) || 0, valCard = parseFloat(card) || 0; 
+    const totalEntrada = valPix + valCash + valCard;
+    if (totalEntrada <= 0) {
+      setToast({ msg: "Informe pelo menos um valor em Pix, Dinheiro ou Cartão.", type: 'error' });
+      return;
+    }
     setIsSubmitting(true); 
     try {
-      await addDoc(getCollectionRef('records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: valPix + valCash + valCard, createdAt: Timestamp.now() }); 
+      await addDoc(getCollectionRef('records_v2'), { date, pix: valPix, cash: valCash, card: valCard, total: totalEntrada, type: 'entrada', createdAt: Timestamp.now() }); 
       setPix(''); setCash(''); setCard(''); 
-      setToast({ msg: "Salvo com sucesso!", type: 'success' });
-    } catch(e) { setToast({ msg: "Erro ao salvar.", type: 'error' }); }
+      setToast({ msg: "Entrada salva com sucesso!", type: 'success' });
+    } catch(e) { setToast({ msg: "Erro ao salvar entrada.", type: 'error' }); }
     setIsSubmitting(false); 
   };
 
@@ -817,13 +826,24 @@ const CashControl = ({ user, orders }) => {
               </button>
             </div>
 
+            <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-2">
+              <div>
+                <div className="text-sm font-black text-green-900">Entrada dividida por forma de pagamento</div>
+                <div className="text-xs font-medium text-green-700">Preencha somente os campos que foram usados no recebimento.</div>
+              </div>
+              <div className="text-center md:text-right">
+                <div className="text-xs font-bold text-green-700 uppercase">Total da Entrada</div>
+                <div className="text-2xl font-black text-green-800">{formatMoney(entryTotal)}</div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Pix</label><input type="number" value={pix} onChange={e => setPix(e.target.value)} className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Dinheiro</label><input type="number" value={cash} onChange={e => setCash(e.target.value)} className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
-              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cartão</label><input type="number" value={card} onChange={e => setCard(e.target.value)} className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Entrada em Pix</label><input type="number" step="0.01" value={pix} onChange={e => setPix(e.target.value)} placeholder="0,00" className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Entrada em Dinheiro</label><input type="number" step="0.01" value={cash} onChange={e => setCash(e.target.value)} placeholder="0,00" className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
+              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Entrada em Cartão</label><input type="number" step="0.01" value={card} onChange={e => setCard(e.target.value)} placeholder="0,00" className="w-full border p-3 rounded-xl text-right outline-none focus:ring-2 focus:ring-blue-100" /></div>
             </div>
-            <button onClick={handleSave} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95">Salvar Lançamento do Dia</button>
+            <button onClick={handleSave} disabled={isSubmitting || entryTotal <= 0} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95">Salvar Entrada do Dia</button>
             
             {currentEntryWeek && (
               <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
