@@ -3647,9 +3647,10 @@ const LivroCaixa = ({ user }) => {
   const [showReceitaModal, setShowReceitaModal] = useState(false);
   const [recOrigem, setRecOrigem] = useState('Café da Praça');
   const [recDescricao, setRecDescricao] = useState('');
-  const [recValor, setRecValor] = useState('');
+  const [recPix, setRecPix] = useState('');
+  const [recDinheiro, setRecDinheiro] = useState('');
+  const [recCartao, setRecCartao] = useState('');
   const [recData, setRecData] = useState(getTodayStr());
-  const [recMetodo, setRecMetodo] = useState('Pix');
   const [recObs, setRecObs] = useState('');
   const [editingId, setEditingId] = useState(null);
 
@@ -3657,9 +3658,10 @@ const LivroCaixa = ({ user }) => {
   const [showDespesaModal, setShowDespesaModal] = useState(false);
   const [despGrupo, setDespGrupo] = useState('cafe');
   const [despDescricao, setDespDescricao] = useState('');
-  const [despValor, setDespValor] = useState('');
+  const [despPix, setDespPix] = useState('');
+  const [despDinheiro, setDespDinheiro] = useState('');
+  const [despCartao, setDespCartao] = useState('');
   const [despData, setDespData] = useState(getTodayStr());
-  const [despMetodo, setDespMetodo] = useState('Pix');
   const [despObs, setDespObs] = useState('');
   const [despEditingId, setDespEditingId] = useState(null);
 
@@ -3684,13 +3686,16 @@ const LivroCaixa = ({ user }) => {
   const lancamentosMes = lancamentos.filter(l => (l.data || '').startsWith(mesAtual));
   const receitas = lancamentosMes.filter(l => l.tipo === 'receita');
   const despesas = lancamentosMes.filter(l => l.tipo === 'despesa');
-  const totalReceitas = receitas.reduce((a, c) => a + (Number(c.valor) || 0), 0);
-  const totalDespesas = despesas.reduce((a, c) => a + (Number(c.valor) || 0), 0);
+
+  const calcValorTotal = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0) + (Number(l.cartao)||0) || (Number(l.valor)||0);
+
+  const totalReceitas = receitas.reduce((a, c) => a + calcValorTotal(c), 0);
+  const totalDespesas = despesas.reduce((a, c) => a + calcValorTotal(c), 0);
   const saldo = totalReceitas - totalDespesas;
 
   const porGrupo = GRUPOS_DESPESA.map(g => ({
     ...g,
-    total: despesas.filter(d => d.grupo === g.id).reduce((a, c) => a + (Number(c.valor) || 0), 0),
+    total: despesas.filter(d => d.grupo === g.id).reduce((a, c) => a + calcValorTotal(c), 0),
     items: despesas.filter(d => d.grupo === g.id),
   }));
 
@@ -3708,17 +3713,20 @@ const LivroCaixa = ({ user }) => {
 
   // SALVAR RECEITA
   const salvarReceita = async () => {
-    const valor = parseFloat(String(recValor).replace(',', '.'));
-    if (!recDescricao || !recValor || isNaN(valor) || valor <= 0) {
-      showToast('Preencha descrição e valor.', 'error'); return;
+    const pix = parseFloat(String(recPix).replace(',','.')) || 0;
+    const dinheiro = parseFloat(String(recDinheiro).replace(',','.')) || 0;
+    const cartao = parseFloat(String(recCartao).replace(',','.')) || 0;
+    const total = pix + dinheiro + cartao;
+    if (!recDescricao || total <= 0) {
+      showToast('Preencha descrição e ao menos um valor.', 'error'); return;
     }
     const data = {
       tipo: 'receita',
       origem: recOrigem,
       descricao: recDescricao,
-      valor,
+      pix, dinheiro, cartao,
+      valor: total,
       data: recData,
-      metodo: recMetodo,
       obs: recObs,
       criadoEm: new Date().toISOString(),
     };
@@ -3736,34 +3744,39 @@ const LivroCaixa = ({ user }) => {
 
   const resetReceitaForm = () => {
     setShowReceitaModal(false); setEditingId(null);
-    setRecOrigem('Café da Praça'); setRecDescricao(''); setRecValor('');
-    setRecData(getTodayStr()); setRecMetodo('Pix'); setRecObs('');
+    setRecOrigem('Café da Praça'); setRecDescricao('');
+    setRecPix(''); setRecDinheiro(''); setRecCartao('');
+    setRecData(getTodayStr()); setRecObs('');
   };
 
   const editarReceita = (item) => {
     setEditingId(item.firestoreId);
     setRecOrigem(item.origem || 'Café da Praça');
     setRecDescricao(item.descricao || '');
-    setRecValor(String(item.valor || ''));
+    setRecPix(item.pix ? String(item.pix) : '');
+    setRecDinheiro(item.dinheiro ? String(item.dinheiro) : '');
+    setRecCartao(item.cartao ? String(item.cartao) : '');
     setRecData(item.data || getTodayStr());
-    setRecMetodo(item.metodo || 'Pix');
     setRecObs(item.obs || '');
     setShowReceitaModal(true);
   };
 
   // SALVAR DESPESA
   const salvarDespesa = async () => {
-    const valor = parseFloat(String(despValor).replace(',', '.'));
-    if (!despDescricao || !despValor || isNaN(valor) || valor <= 0) {
-      showToast('Preencha descrição e valor.', 'error'); return;
+    const pix = parseFloat(String(despPix).replace(',','.')) || 0;
+    const dinheiro = parseFloat(String(despDinheiro).replace(',','.')) || 0;
+    const cartao = parseFloat(String(despCartao).replace(',','.')) || 0;
+    const total = pix + dinheiro + cartao;
+    if (!despDescricao || total <= 0) {
+      showToast('Preencha descrição e ao menos um valor.', 'error'); return;
     }
     const data = {
       tipo: 'despesa',
       grupo: despGrupo,
       descricao: despDescricao,
-      valor,
+      pix, dinheiro, cartao,
+      valor: total,
       data: despData,
-      metodo: despMetodo,
       obs: despObs,
       criadoEm: new Date().toISOString(),
     };
@@ -3781,17 +3794,19 @@ const LivroCaixa = ({ user }) => {
 
   const resetDespesaForm = () => {
     setShowDespesaModal(false); setDespEditingId(null);
-    setDespGrupo('cafe'); setDespDescricao(''); setDespValor('');
-    setDespData(getTodayStr()); setDespMetodo('Pix'); setDespObs('');
+    setDespGrupo('cafe'); setDespDescricao('');
+    setDespPix(''); setDespDinheiro(''); setDespCartao('');
+    setDespData(getTodayStr()); setDespObs('');
   };
 
   const editarDespesa = (item) => {
     setDespEditingId(item.firestoreId);
     setDespGrupo(item.grupo || 'cafe');
     setDespDescricao(item.descricao || '');
-    setDespValor(String(item.valor || ''));
+    setDespPix(item.pix ? String(item.pix) : '');
+    setDespDinheiro(item.dinheiro ? String(item.dinheiro) : '');
+    setDespCartao(item.cartao ? String(item.cartao) : '');
     setDespData(item.data || getTodayStr());
-    setDespMetodo(item.metodo || 'Pix');
     setDespObs(item.obs || '');
     setShowDespesaModal(true);
   };
@@ -3851,23 +3866,41 @@ const LivroCaixa = ({ user }) => {
                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Descrição *</label>
                 <input value={recDescricao} onChange={e => setRecDescricao(e.target.value)} placeholder="Ex: Semana 23 do Café" className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Valor (R$) *</label>
-                  <input type="number" step="0.01" value={recValor} onChange={e => setRecValor(e.target.value)} placeholder="0,00" className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700 text-lg" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data</label>
-                  <input type="date" value={recData} onChange={e => setRecData(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700" />
-                </div>
-              </div>
+              {/* VALORES POR MÉTODO */}
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Método de Recebimento</label>
-                <div className="flex flex-wrap gap-2">
-                  {METODOS_PAGAMENTO.map(m => (
-                    <button key={m} onClick={() => setRecMetodo(m)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${recMetodo === m ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-600 border-slate-200 hover:border-green-400'}`}>{m}</button>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Valores Recebidos</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'PIX', val: recPix, set: setRecPix, color: 'focus:border-blue-500' },
+                    { label: 'DINHEIRO', val: recDinheiro, set: setRecDinheiro, color: 'focus:border-green-500' },
+                    { label: 'CARTÃO', val: recCartao, set: setRecCartao, color: 'focus:border-purple-500' },
+                  ].map(f => (
+                    <div key={f.label} className="flex flex-col items-center">
+                      <span className="text-xs font-black text-slate-500 mb-1">{f.label}</span>
+                      <div className="relative w-full">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">R$</span>
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={f.val}
+                          onChange={e => f.set(e.target.value)}
+                          placeholder="0,00"
+                          className={`w-full border-2 pl-7 pr-2 py-3 rounded-xl outline-none ${f.color} font-bold text-slate-700 text-sm`}
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
+                {/* Total calculado */}
+                {((parseFloat(recPix)||0)+(parseFloat(recDinheiro)||0)+(parseFloat(recCartao)||0)) > 0 && (
+                  <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 flex justify-between items-center">
+                    <span className="text-xs font-bold text-green-700">Total</span>
+                    <span className="font-black text-green-700">{formatMoney((parseFloat(recPix)||0)+(parseFloat(recDinheiro)||0)+(parseFloat(recCartao)||0))}</span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data</label>
+                <input type="date" value={recData} onChange={e => setRecData(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700" />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Observação</label>
@@ -3904,23 +3937,41 @@ const LivroCaixa = ({ user }) => {
                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Descrição *</label>
                 <input value={despDescricao} onChange={e => setDespDescricao(e.target.value)} placeholder="Ex: Compras Assaí" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Valor (R$) *</label>
-                  <input type="number" step="0.01" value={despValor} onChange={e => setDespValor(e.target.value)} placeholder="0,00" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700 text-lg" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data</label>
-                  <input type="date" value={despData} onChange={e => setDespData(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700" />
-                </div>
-              </div>
+              {/* VALORES POR MÉTODO */}
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Método de Pagamento</label>
-                <div className="flex flex-wrap gap-2">
-                  {METODOS_PAGAMENTO.map(m => (
-                    <button key={m} onClick={() => setDespMetodo(m)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${despMetodo === m ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>{m}</button>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Valores Pagos</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'PIX', val: despPix, set: setDespPix, color: 'focus:border-blue-500' },
+                    { label: 'DINHEIRO', val: despDinheiro, set: setDespDinheiro, color: 'focus:border-green-500' },
+                    { label: 'CARTÃO', val: despCartao, set: setDespCartao, color: 'focus:border-purple-500' },
+                  ].map(f => (
+                    <div key={f.label} className="flex flex-col items-center">
+                      <span className="text-xs font-black text-slate-500 mb-1">{f.label}</span>
+                      <div className="relative w-full">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">R$</span>
+                        <input
+                          type="number" step="0.01" min="0"
+                          value={f.val}
+                          onChange={e => f.set(e.target.value)}
+                          placeholder="0,00"
+                          className={`w-full border-2 pl-7 pr-2 py-3 rounded-xl outline-none ${f.color} font-bold text-slate-700 text-sm`}
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
+                {/* Total calculado */}
+                {((parseFloat(despPix)||0)+(parseFloat(despDinheiro)||0)+(parseFloat(despCartao)||0)) > 0 && (
+                  <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2 flex justify-between items-center">
+                    <span className="text-xs font-bold text-red-700">Total</span>
+                    <span className="font-black text-red-700">{formatMoney((parseFloat(despPix)||0)+(parseFloat(despDinheiro)||0)+(parseFloat(despCartao)||0))}</span>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data</label>
+                <input type="date" value={despData} onChange={e => setDespData(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700" />
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Observação</label>
@@ -4020,7 +4071,7 @@ const LivroCaixa = ({ user }) => {
               ) : (
                 <div className="divide-y divide-slate-50">
                   {[...new Set(receitas.map(r => r.origem))].map(origem => {
-                    const tot = receitas.filter(r => r.origem === origem).reduce((a, c) => a + (Number(c.valor) || 0), 0);
+                    const tot = receitas.filter(r => r.origem === origem).reduce((a, c) => a + calcValorTotal(c), 0);
                     return (
                       <div key={origem} className="flex items-center justify-between px-4 py-3">
                         <span className="font-bold text-slate-700 text-sm">{origem}</span>
@@ -4071,12 +4122,16 @@ const LivroCaixa = ({ user }) => {
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-lg">{r.origem}</span>
                         <span className="text-xs text-slate-400 font-medium">{formatDate(r.data)}</span>
-                        <span className="text-xs text-slate-400">{r.metodo}</span>
+                      </div>
+                      <div className="flex gap-2 mt-1.5 flex-wrap">
+                        {(Number(r.pix)||0) > 0 && <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-lg">💠 PIX {formatMoney(r.pix)}</span>}
+                        {(Number(r.dinheiro)||0) > 0 && <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-lg">💵 {formatMoney(r.dinheiro)}</span>}
+                        {(Number(r.cartao)||0) > 0 && <span className="text-xs bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-lg">💳 {formatMoney(r.cartao)}</span>}
                       </div>
                       {r.obs && <div className="text-xs text-slate-400 mt-1 italic">{r.obs}</div>}
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="font-black text-green-600 text-lg">{formatMoney(r.valor)}</div>
+                      <div className="font-black text-green-600 text-lg">{formatMoney(calcValorTotal(r))}</div>
                       <div className="flex gap-1 mt-1 justify-end">
                         <button onClick={() => editarReceita(r)} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"><Edit3 size={13} className="text-slate-500"/></button>
                         <button onClick={() => setConfirmDel(r.firestoreId)} className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"><Trash2 size={13} className="text-red-500"/></button>
@@ -4120,12 +4175,16 @@ const LivroCaixa = ({ user }) => {
                           <div className="font-bold text-slate-800 leading-tight">{d.descricao}</div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span className="text-xs text-slate-400 font-medium">{formatDate(d.data)}</span>
-                            <span className="text-xs text-slate-400">{d.metodo}</span>
+                          </div>
+                          <div className="flex gap-2 mt-1.5 flex-wrap">
+                            {(Number(d.pix)||0) > 0 && <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-lg">💠 PIX {formatMoney(d.pix)}</span>}
+                            {(Number(d.dinheiro)||0) > 0 && <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-lg">💵 {formatMoney(d.dinheiro)}</span>}
+                            {(Number(d.cartao)||0) > 0 && <span className="text-xs bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-lg">💳 {formatMoney(d.cartao)}</span>}
                           </div>
                           {d.obs && <div className="text-xs text-slate-400 mt-1 italic">{d.obs}</div>}
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className="font-black text-red-500">{formatMoney(d.valor)}</div>
+                          <div className="font-black text-red-500">{formatMoney(calcValorTotal(d))}</div>
                           <div className="flex gap-1 mt-1 justify-end">
                             <button onClick={() => editarDespesa(d)} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"><Edit3 size={13} className="text-slate-500"/></button>
                             <button onClick={() => setConfirmDel(d.firestoreId)} className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"><Trash2 size={13} className="text-red-500"/></button>
@@ -4186,7 +4245,7 @@ const LivroCaixa = ({ user }) => {
                     {items.map(d => (
                       <div key={d.firestoreId} className="flex justify-between py-1 text-sm">
                         <span className="text-slate-600 font-medium truncate max-w-[60%]">{d.descricao}</span>
-                        <span className="font-bold text-red-600">{formatMoney(d.valor)}</span>
+                        <span className="font-bold text-red-600">{formatMoney(calcValorTotal(d))}</span>
                       </div>
                     ))}
                     <div className={`flex justify-between py-1.5 mt-1 border-t ${g.border} font-black text-sm`}>
@@ -4225,9 +4284,9 @@ const LivroCaixa = ({ user }) => {
 
               {/* Despesas operacionais vs financeiras */}
               {(() => {
-                const operacional = despesas.filter(d => !['financeiro','investimento'].includes(d.grupo)).reduce((a,c) => a + (Number(c.valor)||0), 0);
-                const financeiro = despesas.filter(d => d.grupo === 'financeiro').reduce((a,c) => a + (Number(c.valor)||0), 0);
-                const investimento = despesas.filter(d => d.grupo === 'investimento').reduce((a,c) => a + (Number(c.valor)||0), 0);
+                const operacional = despesas.filter(d => !['financeiro','investimento'].includes(d.grupo)).reduce((a,c) => a + calcValorTotal(c), 0);
+                const financeiro = despesas.filter(d => d.grupo === 'financeiro').reduce((a,c) => a + calcValorTotal(c), 0);
+                const investimento = despesas.filter(d => d.grupo === 'investimento').reduce((a,c) => a + calcValorTotal(c), 0);
                 const saldoOp = totalReceitas - operacional;
                 if (financeiro === 0 && investimento === 0) return null;
                 return (
