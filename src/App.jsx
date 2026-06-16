@@ -8,7 +8,8 @@ import {
   AlertTriangle, CalendarDays, BarChart3, Loader2, ListPlus, ChevronDown,
   CheckCircle2, FolderLock, Archive, Banknote, RotateCcw, Landmark, History,
   Clock, ArrowRightLeft, Store, MonitorSmartphone, Cake, CalendarClock, Phone,
-  CheckSquare, Printer, Settings, MessageCircle, AlertOctagon, Sparkles, Maximize
+  CheckSquare, Printer, Settings, MessageCircle, AlertOctagon, Sparkles, Maximize,
+  Tag
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
@@ -3637,7 +3638,13 @@ const LivroCaixa = ({ user }) => {
   const [lancamentos, setLancamentos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
-  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | receitas | despesas | dre
+  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | receitas | despesas | dre | tags
+  const [tags, setTags] = useState([]);
+  const [tagsLoaded, setTagsLoaded] = useState(false);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [tagNome, setTagNome] = useState('');
+  const [tagGrupo, setTagGrupo] = useState('cafe');
+  const [tagEditId, setTagEditId] = useState(null);
   const [mesAtual, setMesAtual] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -3680,7 +3687,13 @@ const LivroCaixa = ({ user }) => {
       setLancamentos(docs);
       setLoading(false);
     }, (e) => { console.error(e); setLoading(false); });
-    return () => unsub();
+    const unsubTags = onSnapshot(query(getCollectionRef('livrocaixa_tags')), (snap) => {
+      const docs = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }))
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+      setTags(docs);
+      setTagsLoaded(true);
+    }, (e) => { console.error(e); setTagsLoaded(true); });
+    return () => { unsub(); unsubTags(); };
   }, [user]);
 
   const lancamentosMes = lancamentos.filter(l => (l.data || '').startsWith(mesAtual));
@@ -3820,6 +3833,35 @@ const LivroCaixa = ({ user }) => {
   };
 
   const getGrupoInfo = (id) => GRUPOS_DESPESA.find(g => g.id === id) || GRUPOS_DESPESA[0];
+
+  // TAG CRUD
+  const salvarTag = async () => {
+    if (!tagNome.trim()) { showToast('Digite um nome.', 'error'); return; }
+    const data = { nome: tagNome.trim(), grupo: tagGrupo };
+    try {
+      if (tagEditId) {
+        await updateDoc(getDocRef('livrocaixa_tags', tagEditId), data);
+        showToast('Tag atualizada!');
+      } else {
+        await addDoc(getCollectionRef('livrocaixa_tags'), data);
+        showToast('Tag criada!');
+      }
+      setShowTagModal(false); setTagNome(''); setTagGrupo('cafe'); setTagEditId(null);
+    } catch(e) { console.error(e); showToast('Erro ao salvar.', 'error'); }
+  };
+
+  const excluirTag = async (id) => {
+    try {
+      await deleteDoc(getDocRef('livrocaixa_tags', id));
+      showToast('Tag removida!');
+    } catch(e) { console.error(e); showToast('Erro.', 'error'); }
+  };
+
+  // Agrupa lançamentos por tag (match case-insensitive na descricao)
+  const getTagMatches = (items, tagNomeStr) =>
+    items.filter(d => (d.descricao || '').toLowerCase().includes(tagNomeStr.toLowerCase()));
+
+  const sumMetodo = (items, campo) => items.reduce((a, c) => a + (Number(c[campo]) || 0), 0);
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center h-screen bg-slate-50">
@@ -4008,6 +4050,7 @@ const LivroCaixa = ({ user }) => {
             { id: 'receitas', label: 'Receitas', icon: ArrowUpCircle },
             { id: 'despesas', label: 'Despesas', icon: ArrowDownCircle },
             { id: 'dre', label: 'DRE', icon: TrendingUp },
+            { id: 'tags', label: 'Tags', icon: Tag },
           ].map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-all ${activeTab === t.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <t.icon size={15}/>{t.label}
@@ -4209,6 +4252,11 @@ const LivroCaixa = ({ user }) => {
         {/* ── DRE ── */}
         {activeTab === 'dre' && (
           <div className="space-y-4">
+            {tags.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 font-medium flex items-center gap-2">
+                <Tag size={16}/> Cadastre tags na aba <strong>Tags</strong> para agrupar despesas por nome na DRE.
+              </div>
+            )}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
               <div className="p-4 bg-slate-800 text-white">
                 <h2 className="font-black text-lg flex items-center gap-2"><TrendingUp size={20}/> DRE Simplificada</h2>
@@ -4219,11 +4267,22 @@ const LivroCaixa = ({ user }) => {
               <div className="p-4 border-b bg-green-50/50">
                 <div className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Receitas</div>
                 {[...new Set(receitas.map(r => r.origem))].map(origem => {
-                  const tot = receitas.filter(r => r.origem === origem).reduce((a, c) => a + (Number(c.valor) || 0), 0);
+                  const itens = receitas.filter(r => r.origem === origem);
+                  const tot = itens.reduce((a, c) => a + calcValorTotal(c), 0);
+                  const totPix = sumMetodo(itens, 'pix');
+                  const totDin = sumMetodo(itens, 'dinheiro');
+                  const totCar = sumMetodo(itens, 'cartao');
                   return (
-                    <div key={origem} className="flex justify-between py-1.5 text-sm">
-                      <span className="text-slate-600 font-medium">{origem}</span>
-                      <span className="font-bold text-green-700">{formatMoney(tot)}</span>
+                    <div key={origem} className="py-1.5 border-b border-green-100 last:border-0">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-700 font-bold">{origem}</span>
+                        <span className="font-black text-green-700">{formatMoney(tot)}</span>
+                      </div>
+                      <div className="flex gap-3 mt-0.5 flex-wrap">
+                        {totPix > 0 && <span className="text-xs text-blue-600 font-medium">💠 PIX {formatMoney(totPix)}</span>}
+                        {totDin > 0 && <span className="text-xs text-green-600 font-medium">💵 {formatMoney(totDin)}</span>}
+                        {totCar > 0 && <span className="text-xs text-purple-600 font-medium">💳 {formatMoney(totCar)}</span>}
+                      </div>
                     </div>
                   );
                 })}
@@ -4234,24 +4293,80 @@ const LivroCaixa = ({ user }) => {
                 </div>
               </div>
 
-              {/* DESPESAS POR GRUPO */}
+              {/* DESPESAS POR GRUPO COM TAGS */}
               {GRUPOS_DESPESA.map(g => {
-                const items = despesas.filter(d => d.grupo === g.id);
-                const subtot = items.reduce((a, c) => a + (Number(c.valor) || 0), 0);
+                const itemsGrupo = despesas.filter(d => d.grupo === g.id);
+                const subtot = itemsGrupo.reduce((a, c) => a + calcValorTotal(c), 0);
                 if (subtot === 0) return null;
+
+                // Tags deste grupo
+                const tagsDoGrupo = tags.filter(t => t.grupo === g.id);
+                // Itens já cobertos por alguma tag
+                const cobertos = new Set();
+                const tagGroups = tagsDoGrupo.map(t => {
+                  const matches = getTagMatches(itemsGrupo, t.nome);
+                  matches.forEach(m => cobertos.add(m.firestoreId));
+                  return { tag: t, matches };
+                }).filter(tg => tg.matches.length > 0);
+                // Itens sem tag
+                const semTag = itemsGrupo.filter(d => !cobertos.has(d.firestoreId));
+
                 return (
-                  <div key={g.id} className={`p-4 border-b ${g.bg}`}>
-                    <div className={`text-xs font-black uppercase tracking-wider mb-2 ${g.text}`}>{g.label}</div>
-                    {items.map(d => (
-                      <div key={d.firestoreId} className="flex justify-between py-1 text-sm">
-                        <span className="text-slate-600 font-medium truncate max-w-[60%]">{d.descricao}</span>
-                        <span className="font-bold text-red-600">{formatMoney(calcValorTotal(d))}</span>
-                      </div>
-                    ))}
-                    <div className={`flex justify-between py-1.5 mt-1 border-t ${g.border} font-black text-sm`}>
-                      <span className={g.text}>Subtotal {g.label}</span>
-                      <span className="text-red-700">{formatMoney(subtot)}</span>
+                  <div key={g.id} className={`border-b`}>
+                    <div className={`px-4 py-2 flex justify-between items-center ${g.bg}`}>
+                      <span className={`font-black text-sm ${g.text}`}>{g.label}</span>
+                      <span className={`font-black text-sm ${g.text}`}>{formatMoney(subtot)}</span>
                     </div>
+
+                    {/* Por tag */}
+                    {tagGroups.map(({ tag, matches }) => {
+                      const tot = matches.reduce((a, c) => a + calcValorTotal(c), 0);
+                      const totPix = sumMetodo(matches, 'pix');
+                      const totDin = sumMetodo(matches, 'dinheiro');
+                      const totCar = sumMetodo(matches, 'cartao');
+                      return (
+                        <div key={tag.firestoreId} className="px-4 py-2.5 border-b border-slate-50">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <Tag size={12} className="text-slate-400"/>
+                              <span className="font-bold text-slate-700 text-sm">{tag.nome}</span>
+                              <span className="text-xs text-slate-400">{matches.length}x</span>
+                            </div>
+                            <span className="font-black text-red-600">{formatMoney(tot)}</span>
+                          </div>
+                          <div className="flex gap-3 mt-0.5 pl-5 flex-wrap">
+                            {totPix > 0 && <span className="text-xs text-blue-600 font-medium">💠 PIX {formatMoney(totPix)}</span>}
+                            {totDin > 0 && <span className="text-xs text-green-600 font-medium">💵 {formatMoney(totDin)}</span>}
+                            {totCar > 0 && <span className="text-xs text-purple-600 font-medium">💳 {formatMoney(totCar)}</span>}
+                          </div>
+                          {/* Lançamentos individuais */}
+                          <div className="mt-1 pl-5 space-y-0.5">
+                            {matches.map(d => (
+                              <div key={d.firestoreId} className="flex justify-between text-xs text-slate-400">
+                                <span className="truncate max-w-[65%]">{d.descricao} — {formatDate(d.data)}</span>
+                                <span>{formatMoney(calcValorTotal(d))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Sem tag */}
+                    {semTag.length > 0 && (
+                      <div className="px-4 py-2.5 border-b border-slate-50">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs font-bold text-slate-400 uppercase">Outros</span>
+                          <span className="font-bold text-slate-500 text-xs">{formatMoney(semTag.reduce((a,c)=>a+calcValorTotal(c),0))}</span>
+                        </div>
+                        {semTag.map(d => (
+                          <div key={d.firestoreId} className="flex justify-between text-xs text-slate-500 py-0.5">
+                            <span className="truncate max-w-[65%]">{d.descricao} — {formatDate(d.data)}</span>
+                            <span>{formatMoney(calcValorTotal(d))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -4282,7 +4397,7 @@ const LivroCaixa = ({ user }) => {
                 )}
               </div>
 
-              {/* Despesas operacionais vs financeiras */}
+              {/* Visão Operacional */}
               {(() => {
                 const operacional = despesas.filter(d => !['financeiro','investimento'].includes(d.grupo)).reduce((a,c) => a + calcValorTotal(c), 0);
                 const financeiro = despesas.filter(d => d.grupo === 'financeiro').reduce((a,c) => a + calcValorTotal(c), 0);
@@ -4312,6 +4427,98 @@ const LivroCaixa = ({ user }) => {
                 );
               })()}
             </div>
+          </div>
+        )}
+
+        {/* ── TAGS ── */}
+        {activeTab === 'tags' && (
+          <div className="space-y-4">
+            {/* Modal tag */}
+            {showTagModal && (
+              <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl">
+                  <div className="p-5 border-b flex justify-between items-center bg-indigo-50 rounded-t-3xl">
+                    <h3 className="font-bold text-lg text-indigo-800 flex items-center gap-2"><Tag size={18}/> {tagEditId ? 'Editar Tag' : 'Nova Tag'}</h3>
+                    <button onClick={() => { setShowTagModal(false); setTagNome(''); setTagGrupo('cafe'); setTagEditId(null); }} className="p-2 hover:bg-indigo-100 rounded-full"><X size={18} className="text-indigo-700"/></button>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Palavra-chave *</label>
+                      <input
+                        value={tagNome}
+                        onChange={e => setTagNome(e.target.value)}
+                        placeholder="Ex: Mercado, Selma, Toinha, Nubank..."
+                        className="w-full border-2 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold text-slate-700"
+                        autoFocus
+                      />
+                      <p className="text-xs text-slate-400 mt-1">Qualquer lançamento que contenha esse nome na descrição será agrupado aqui.</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Grupo</label>
+                      <div className="flex flex-wrap gap-2">
+                        {GRUPOS_DESPESA.map(g => (
+                          <button key={g.id} onClick={() => setTagGrupo(g.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${tagGrupo === g.id ? g.badge + ' border-current' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>{g.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={salvarTag} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 active:scale-95 transition-all">
+                      <Save size={18}/> {tagEditId ? 'Salvar' : 'Criar Tag'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="font-bold text-slate-700 flex items-center gap-2"><Tag size={16}/> Tags de Agrupamento</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Palavras-chave que agrupam lançamentos na DRE</p>
+              </div>
+              <button onClick={() => setShowTagModal(true)} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 active:scale-95 shadow-md">
+                <PlusCircle size={16}/> Nova
+              </button>
+            </div>
+
+            {tags.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <Tag size={40} className="text-slate-200 mx-auto mb-3"/>
+                <p className="text-slate-500 font-bold mb-1">Nenhuma tag cadastrada</p>
+                <p className="text-slate-400 text-sm">Crie tags como "Mercado", "Selma", "Toinha" para organizar a DRE automaticamente.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {GRUPOS_DESPESA.map(g => {
+                  const tagsGrupo = tags.filter(t => t.grupo === g.id);
+                  if (tagsGrupo.length === 0) return null;
+                  return (
+                    <div key={g.id} className={`bg-white rounded-2xl shadow-sm border-l-4 overflow-hidden ${g.border}`}>
+                      <div className={`px-4 py-2.5 ${g.bg}`}>
+                        <span className={`font-black text-sm ${g.text}`}>{g.label}</span>
+                      </div>
+                      <div className="divide-y divide-slate-50">
+                        {tagsGrupo.map(t => {
+                          const matches = getTagMatches(despesas, t.nome);
+                          const total = matches.reduce((a, c) => a + calcValorTotal(c), 0);
+                          return (
+                            <div key={t.firestoreId} className="flex items-center gap-3 px-4 py-3">
+                              <Tag size={15} className="text-slate-300 flex-shrink-0"/>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-bold text-slate-800">{t.nome}</div>
+                                <div className="text-xs text-slate-400">{matches.length} lançamento{matches.length !== 1 ? 's' : ''} este mês{total > 0 ? ` · ${formatMoney(total)}` : ''}</div>
+                              </div>
+                              <div className="flex gap-1">
+                                <button onClick={() => { setTagEditId(t.firestoreId); setTagNome(t.nome); setTagGrupo(t.grupo); setShowTagModal(true); }} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg"><Edit3 size={13} className="text-slate-500"/></button>
+                                <button onClick={() => excluirTag(t.firestoreId)} className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg"><Trash2 size={13} className="text-red-500"/></button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
