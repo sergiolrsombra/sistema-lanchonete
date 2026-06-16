@@ -2522,7 +2522,7 @@ const PosView = ({ user, onBack, initialSettings }) => {
       <div className="bg-slate-900 text-white flex flex-row md:flex-col items-center justify-around md:justify-start md:py-6 fixed w-full h-16 bottom-0 md:h-full md:w-16 md:top-0 md:left-0 z-[60] shadow-[0_-10px_20px_rgba(0,0,0,0.1)] md:shadow-2xl px-2 md:px-0">
         <div onClick={onBack} className="hidden md:flex p-2 bg-amber-500 rounded-lg mb-2 cursor-pointer hover:bg-amber-400 transition-colors" title="Sair"><Store size={20} className="text-slate-900" /></div>
         <div className="flex flex-row md:flex-col items-center gap-1 sm:gap-2 md:gap-4 w-full md:mt-4 justify-between md:justify-start overflow-x-auto hide-scrollbar px-1">
-          {[{v:'pos',i:ShoppingCart},{v:'tabs',i:ClipboardList},{v:'kitchen',i:ChefHat},{v:'orders',i:Cake},{v:'history',i:History},{v:'cash',i:Coins},{v:'admin',i:LayoutDashboard},{v:'costs',i:DollarSign},{v:'settings',i:Settings}].map(nav => {
+          {[{v:'pos',i:ShoppingCart},{v:'tabs',i:ClipboardList},{v:'kitchen',i:ChefHat},{v:'orders',i:Cake},{v:'history',i:History},{v:'cash',i:Coins},{v:'admin',i:LayoutDashboard},{v:'costs',i:DollarSign},{v:'livrocaixa',i:Landmark},{v:'settings',i:Settings}].map(nav => {
             const Icon = nav.i;
             return (
               <button key={nav.v} onClick={() => { if(nav.v==='settings' && !isSettingsUnlocked) setShowSettingsPasswordModal(true); else setView(nav.v); }} className={`p-2.5 md:p-2 rounded-xl relative transition-all shrink-0 ${view === nav.v ? 'bg-indigo-600 shadow-lg text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
@@ -3611,6 +3611,651 @@ const PosView = ({ user, onBack, initialSettings }) => {
             </div>
           </div>
         )}
+
+        {view === 'livrocaixa' && (
+          <LivroCaixa user={user} />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --------------------------------------------------------------------------------
+// COMPONENTE: LIVRO-CAIXA PESSOAL / EMPRESARIAL
+// --------------------------------------------------------------------------------
+const GRUPOS_DESPESA = [
+  { id: 'cafe', label: 'Café da Praça', color: 'amber', bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-800' },
+  { id: 'grafica', label: 'Gráfica', color: 'blue', bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-800' },
+  { id: 'casa', label: 'Casa / Pessoal', color: 'purple', bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-800' },
+  { id: 'financeiro', label: 'Financeiro', color: 'rose', bg: 'bg-rose-50', border: 'border-rose-300', text: 'text-rose-700', badge: 'bg-rose-100 text-rose-800' },
+  { id: 'investimento', label: 'Investimentos', color: 'emerald', bg: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
+];
+
+const METODOS_PAGAMENTO = ['Pix', 'Dinheiro', 'Cartão Débito', 'Cartão Crédito', 'Boleto', 'Transferência'];
+
+const LivroCaixa = ({ user }) => {
+  const [lancamentos, setLancamentos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | receitas | despesas | dre
+  const [mesAtual, setMesAtual] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  });
+
+  // Form receita
+  const [showReceitaModal, setShowReceitaModal] = useState(false);
+  const [recOrigem, setRecOrigem] = useState('Café da Praça');
+  const [recDescricao, setRecDescricao] = useState('');
+  const [recValor, setRecValor] = useState('');
+  const [recData, setRecData] = useState(getTodayStr());
+  const [recMetodo, setRecMetodo] = useState('Pix');
+  const [recObs, setRecObs] = useState('');
+  const [editingId, setEditingId] = useState(null);
+
+  // Form despesa
+  const [showDespesaModal, setShowDespesaModal] = useState(false);
+  const [despGrupo, setDespGrupo] = useState('cafe');
+  const [despDescricao, setDespDescricao] = useState('');
+  const [despValor, setDespValor] = useState('');
+  const [despData, setDespData] = useState(getTodayStr());
+  const [despMetodo, setDespMetodo] = useState('Pix');
+  const [despObs, setDespObs] = useState('');
+  const [despEditingId, setDespEditingId] = useState(null);
+
+  const [confirmDel, setConfirmDel] = useState(null); // { id, tipo }
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(query(getCollectionRef('livrocaixa')), (snap) => {
+      const docs = snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }))
+        .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+      setLancamentos(docs);
+      setLoading(false);
+    }, (e) => { console.error(e); setLoading(false); });
+    return () => unsub();
+  }, [user]);
+
+  const lancamentosMes = lancamentos.filter(l => (l.data || '').startsWith(mesAtual));
+  const receitas = lancamentosMes.filter(l => l.tipo === 'receita');
+  const despesas = lancamentosMes.filter(l => l.tipo === 'despesa');
+  const totalReceitas = receitas.reduce((a, c) => a + (Number(c.valor) || 0), 0);
+  const totalDespesas = despesas.reduce((a, c) => a + (Number(c.valor) || 0), 0);
+  const saldo = totalReceitas - totalDespesas;
+
+  const porGrupo = GRUPOS_DESPESA.map(g => ({
+    ...g,
+    total: despesas.filter(d => d.grupo === g.id).reduce((a, c) => a + (Number(c.valor) || 0), 0),
+    items: despesas.filter(d => d.grupo === g.id),
+  }));
+
+  const formatMes = (mesStr) => {
+    const [y, m] = mesStr.split('-');
+    const names = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    return `${names[parseInt(m)-1]}/${y}`;
+  };
+
+  const navegarMes = (dir) => {
+    const [y, m] = mesAtual.split('-').map(Number);
+    const d = new Date(y, m - 1 + dir, 1);
+    setMesAtual(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  };
+
+  // SALVAR RECEITA
+  const salvarReceita = async () => {
+    const valor = parseFloat(String(recValor).replace(',', '.'));
+    if (!recDescricao || !recValor || isNaN(valor) || valor <= 0) {
+      showToast('Preencha descrição e valor.', 'error'); return;
+    }
+    const data = {
+      tipo: 'receita',
+      origem: recOrigem,
+      descricao: recDescricao,
+      valor,
+      data: recData,
+      metodo: recMetodo,
+      obs: recObs,
+      criadoEm: new Date().toISOString(),
+    };
+    try {
+      if (editingId) {
+        await updateDoc(getDocRef('livrocaixa', editingId), data);
+        showToast('Receita atualizada!');
+      } else {
+        await addDoc(getCollectionRef('livrocaixa'), data);
+        showToast('Receita lançada!');
+      }
+      resetReceitaForm();
+    } catch(e) { console.error(e); showToast('Erro ao salvar.', 'error'); }
+  };
+
+  const resetReceitaForm = () => {
+    setShowReceitaModal(false); setEditingId(null);
+    setRecOrigem('Café da Praça'); setRecDescricao(''); setRecValor('');
+    setRecData(getTodayStr()); setRecMetodo('Pix'); setRecObs('');
+  };
+
+  const editarReceita = (item) => {
+    setEditingId(item.firestoreId);
+    setRecOrigem(item.origem || 'Café da Praça');
+    setRecDescricao(item.descricao || '');
+    setRecValor(String(item.valor || ''));
+    setRecData(item.data || getTodayStr());
+    setRecMetodo(item.metodo || 'Pix');
+    setRecObs(item.obs || '');
+    setShowReceitaModal(true);
+  };
+
+  // SALVAR DESPESA
+  const salvarDespesa = async () => {
+    const valor = parseFloat(String(despValor).replace(',', '.'));
+    if (!despDescricao || !despValor || isNaN(valor) || valor <= 0) {
+      showToast('Preencha descrição e valor.', 'error'); return;
+    }
+    const data = {
+      tipo: 'despesa',
+      grupo: despGrupo,
+      descricao: despDescricao,
+      valor,
+      data: despData,
+      metodo: despMetodo,
+      obs: despObs,
+      criadoEm: new Date().toISOString(),
+    };
+    try {
+      if (despEditingId) {
+        await updateDoc(getDocRef('livrocaixa', despEditingId), data);
+        showToast('Despesa atualizada!');
+      } else {
+        await addDoc(getCollectionRef('livrocaixa'), data);
+        showToast('Despesa lançada!');
+      }
+      resetDespesaForm();
+    } catch(e) { console.error(e); showToast('Erro ao salvar.', 'error'); }
+  };
+
+  const resetDespesaForm = () => {
+    setShowDespesaModal(false); setDespEditingId(null);
+    setDespGrupo('cafe'); setDespDescricao(''); setDespValor('');
+    setDespData(getTodayStr()); setDespMetodo('Pix'); setDespObs('');
+  };
+
+  const editarDespesa = (item) => {
+    setDespEditingId(item.firestoreId);
+    setDespGrupo(item.grupo || 'cafe');
+    setDespDescricao(item.descricao || '');
+    setDespValor(String(item.valor || ''));
+    setDespData(item.data || getTodayStr());
+    setDespMetodo(item.metodo || 'Pix');
+    setDespObs(item.obs || '');
+    setShowDespesaModal(true);
+  };
+
+  const excluirLancamento = async (firestoreId) => {
+    try {
+      await deleteDoc(getDocRef('livrocaixa', firestoreId));
+      showToast('Lançamento excluído!');
+      setConfirmDel(null);
+    } catch(e) { console.error(e); showToast('Erro ao excluir.', 'error'); }
+  };
+
+  const getGrupoInfo = (id) => GRUPOS_DESPESA.find(g => g.id === id) || GRUPOS_DESPESA[0];
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center h-screen bg-slate-50">
+      <Loader2 className="animate-spin text-indigo-500" size={40} />
+    </div>
+  );
+
+  return (
+    <div className="flex-1 bg-slate-50 min-h-screen pb-24 md:pb-8 overflow-y-auto">
+      {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* CONFIRM DELETE */}
+      {confirmDel && (
+        <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex justify-center text-red-500 mb-4"><AlertTriangle size={40}/></div>
+            <h3 className="font-bold text-lg text-center mb-6">Excluir este lançamento?</h3>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDel(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancelar</button>
+              <button onClick={() => excluirLancamento(confirmDel)} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RECEITA */}
+      {showReceitaModal && (
+        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b flex justify-between items-center bg-green-50 rounded-t-3xl">
+              <h3 className="font-bold text-lg text-green-800 flex items-center gap-2"><ArrowUpCircle size={20}/> {editingId ? 'Editar Receita' : 'Nova Receita'}</h3>
+              <button onClick={resetReceitaForm} className="p-2 hover:bg-green-100 rounded-full"><X size={18} className="text-green-700"/></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Origem</label>
+                <select value={recOrigem} onChange={e => setRecOrigem(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700">
+                  <option>Café da Praça</option>
+                  <option>Gráfica</option>
+                  <option>Outra</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Descrição *</label>
+                <input value={recDescricao} onChange={e => setRecDescricao(e.target.value)} placeholder="Ex: Semana 23 do Café" className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Valor (R$) *</label>
+                  <input type="number" step="0.01" value={recValor} onChange={e => setRecValor(e.target.value)} placeholder="0,00" className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700 text-lg" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data</label>
+                  <input type="date" value={recData} onChange={e => setRecData(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 font-bold text-slate-700" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Método de Recebimento</label>
+                <div className="flex flex-wrap gap-2">
+                  {METODOS_PAGAMENTO.map(m => (
+                    <button key={m} onClick={() => setRecMetodo(m)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${recMetodo === m ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-600 border-slate-200 hover:border-green-400'}`}>{m}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Observação</label>
+                <input value={recObs} onChange={e => setRecObs(e.target.value)} placeholder="Opcional..." className="w-full border-2 p-3 rounded-xl outline-none focus:border-green-500 text-slate-700" />
+              </div>
+            </div>
+            <div className="p-5 border-t">
+              <button onClick={salvarReceita} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+                <Save size={18}/> {editingId ? 'Salvar Alterações' : 'Lançar Receita'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DESPESA */}
+      {showDespesaModal && (
+        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b flex justify-between items-center bg-red-50 rounded-t-3xl">
+              <h3 className="font-bold text-lg text-red-800 flex items-center gap-2"><ArrowDownCircle size={20}/> {despEditingId ? 'Editar Despesa' : 'Nova Despesa'}</h3>
+              <button onClick={resetDespesaForm} className="p-2 hover:bg-red-100 rounded-full"><X size={18} className="text-red-700"/></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Grupo</label>
+                <div className="flex flex-wrap gap-2">
+                  {GRUPOS_DESPESA.map(g => (
+                    <button key={g.id} onClick={() => setDespGrupo(g.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${despGrupo === g.id ? g.badge + ' border-current' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>{g.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Descrição *</label>
+                <input value={despDescricao} onChange={e => setDespDescricao(e.target.value)} placeholder="Ex: Compras Assaí" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Valor (R$) *</label>
+                  <input type="number" step="0.01" value={despValor} onChange={e => setDespValor(e.target.value)} placeholder="0,00" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700 text-lg" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Data</label>
+                  <input type="date" value={despData} onChange={e => setDespData(e.target.value)} className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 font-bold text-slate-700" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Método de Pagamento</label>
+                <div className="flex flex-wrap gap-2">
+                  {METODOS_PAGAMENTO.map(m => (
+                    <button key={m} onClick={() => setDespMetodo(m)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${despMetodo === m ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200 hover:border-red-300'}`}>{m}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Observação</label>
+                <input value={despObs} onChange={e => setDespObs(e.target.value)} placeholder="Opcional..." className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-400 text-slate-700" />
+              </div>
+            </div>
+            <div className="p-5 border-t">
+              <button onClick={salvarDespesa} className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+                <Save size={18}/> {despEditingId ? 'Salvar Alterações' : 'Lançar Despesa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div className="bg-white border-b border-slate-200 px-4 md:px-8 pt-4 pb-0 sticky top-0 z-40 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-black text-slate-800 flex items-center gap-2"><Landmark size={26} className="text-indigo-600"/> Livro-Caixa</h1>
+            <p className="text-xs text-slate-400 font-medium">Controle financeiro pessoal / empresarial</p>
+          </div>
+          {/* Navegação de mês */}
+          <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
+            <button onClick={() => navegarMes(-1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-600"><ChevronLeft size={18}/></button>
+            <span className="font-black text-slate-800 text-sm min-w-[72px] text-center">{formatMes(mesAtual)}</span>
+            <button onClick={() => navegarMes(1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-600"><ChevronRight size={18}/></button>
+          </div>
+        </div>
+        {/* Tabs */}
+        <div className="flex gap-1 overflow-x-auto hide-scrollbar">
+          {[
+            { id: 'dashboard', label: 'Resumo', icon: BarChart3 },
+            { id: 'receitas', label: 'Receitas', icon: ArrowUpCircle },
+            { id: 'despesas', label: 'Despesas', icon: ArrowDownCircle },
+            { id: 'dre', label: 'DRE', icon: TrendingUp },
+          ].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold border-b-2 whitespace-nowrap transition-all ${activeTab === t.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              <t.icon size={15}/>{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="p-4 md:p-8 space-y-6">
+
+        {/* ── DASHBOARD ── */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            {/* Cards sumário */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Receitas</div>
+                <div className="text-xl font-black text-green-600">{formatMoney(totalReceitas)}</div>
+              </div>
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Despesas</div>
+                <div className="text-xl font-black text-red-500">{formatMoney(totalDespesas)}</div>
+              </div>
+              <div className={`rounded-2xl p-4 shadow-sm border ${saldo >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Saldo</div>
+                <div className={`text-xl font-black ${saldo >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(saldo)}</div>
+              </div>
+            </div>
+
+            {/* Despesas por grupo */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-4 border-b flex justify-between items-center">
+                <h2 className="font-bold text-slate-700 flex items-center gap-2"><DollarSign size={16} className="text-red-500"/> Despesas por Grupo</h2>
+                <span className="text-xs font-bold text-slate-400">{formatMes(mesAtual)}</span>
+              </div>
+              {porGrupo.filter(g => g.total > 0).length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm font-medium">Nenhuma despesa em {formatMes(mesAtual)}</div>
+              ) : (
+                <div className="divide-y divide-slate-50">
+                  {porGrupo.filter(g => g.total > 0).map(g => (
+                    <div key={g.id} className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2.5 h-2.5 rounded-full ${g.bg.replace('bg-','bg-').replace('-50','-400')}`} style={{background: g.id==='cafe'?'#f59e0b':g.id==='grafica'?'#3b82f6':g.id==='casa'?'#8b5cf6':g.id==='financeiro'?'#f43f5e':'#10b981'}}></div>
+                        <span className="font-bold text-slate-700 text-sm">{g.label}</span>
+                        <span className="text-xs text-slate-400">{g.items.length} lançamento{g.items.length !== 1 ? 's' : ''}</span>
+                      </div>
+                      <span className="font-black text-slate-800">{formatMoney(g.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Receitas por origem */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-4 border-b flex justify-between items-center">
+                <h2 className="font-bold text-slate-700 flex items-center gap-2"><ArrowUpCircle size={16} className="text-green-500"/> Receitas por Origem</h2>
+              </div>
+              {receitas.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm font-medium">Nenhuma receita em {formatMes(mesAtual)}</div>
+              ) : (
+                <div className="divide-y divide-slate-50">
+                  {[...new Set(receitas.map(r => r.origem))].map(origem => {
+                    const tot = receitas.filter(r => r.origem === origem).reduce((a, c) => a + (Number(c.valor) || 0), 0);
+                    return (
+                      <div key={origem} className="flex items-center justify-between px-4 py-3">
+                        <span className="font-bold text-slate-700 text-sm">{origem}</span>
+                        <span className="font-black text-green-700">{formatMoney(tot)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Botões rápidos */}
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setShowReceitaModal(true)} className="bg-green-600 hover:bg-green-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-green-600/20 active:scale-95 transition-all">
+                <ArrowUpCircle size={20}/> + Receita
+              </button>
+              <button onClick={() => setShowDespesaModal(true)} className="bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transition-all">
+                <ArrowDownCircle size={20}/> + Despesa
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── RECEITAS ── */}
+        {activeTab === 'receitas' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="font-bold text-slate-700">Receitas de {formatMes(mesAtual)}</h2>
+                <p className="text-sm text-green-600 font-bold">{formatMoney(totalReceitas)}</p>
+              </div>
+              <button onClick={() => setShowReceitaModal(true)} className="bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 active:scale-95 transition-all shadow-md">
+                <PlusCircle size={16}/> Nova
+              </button>
+            </div>
+            {receitas.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <ArrowUpCircle size={40} className="text-slate-200 mx-auto mb-3"/>
+                <p className="text-slate-400 font-medium">Nenhuma receita em {formatMes(mesAtual)}</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {receitas.map(r => (
+                  <div key={r.firestoreId} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-start gap-3">
+                    <div className="bg-green-100 p-2 rounded-xl flex-shrink-0 mt-0.5"><ArrowUpCircle size={18} className="text-green-600"/></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-slate-800 leading-tight">{r.descricao}</div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs bg-green-50 text-green-700 font-bold px-2 py-0.5 rounded-lg">{r.origem}</span>
+                        <span className="text-xs text-slate-400 font-medium">{formatDate(r.data)}</span>
+                        <span className="text-xs text-slate-400">{r.metodo}</span>
+                      </div>
+                      {r.obs && <div className="text-xs text-slate-400 mt-1 italic">{r.obs}</div>}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-black text-green-600 text-lg">{formatMoney(r.valor)}</div>
+                      <div className="flex gap-1 mt-1 justify-end">
+                        <button onClick={() => editarReceita(r)} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"><Edit3 size={13} className="text-slate-500"/></button>
+                        <button onClick={() => setConfirmDel(r.firestoreId)} className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"><Trash2 size={13} className="text-red-500"/></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── DESPESAS ── */}
+        {activeTab === 'despesas' && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="font-bold text-slate-700">Despesas de {formatMes(mesAtual)}</h2>
+                <p className="text-sm text-red-500 font-bold">{formatMoney(totalDespesas)}</p>
+              </div>
+              <button onClick={() => setShowDespesaModal(true)} className="bg-red-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 active:scale-95 transition-all shadow-md">
+                <PlusCircle size={16}/> Nova
+              </button>
+            </div>
+
+            {/* Filtro por grupo (mostrar todos agrupados) */}
+            {GRUPOS_DESPESA.map(g => {
+              const items = despesas.filter(d => d.grupo === g.id);
+              if (items.length === 0) return null;
+              const subtotal = items.reduce((a, c) => a + (Number(c.valor) || 0), 0);
+              return (
+                <div key={g.id} className={`bg-white rounded-2xl shadow-sm border-l-4 overflow-hidden ${g.border}`}>
+                  <div className={`px-4 py-3 flex justify-between items-center ${g.bg}`}>
+                    <span className={`font-black text-sm ${g.text}`}>{g.label}</span>
+                    <span className={`font-black ${g.text}`}>{formatMoney(subtotal)}</span>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {items.map(d => (
+                      <div key={d.firestoreId} className="flex items-start gap-3 p-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-slate-800 leading-tight">{d.descricao}</div>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-xs text-slate-400 font-medium">{formatDate(d.data)}</span>
+                            <span className="text-xs text-slate-400">{d.metodo}</span>
+                          </div>
+                          {d.obs && <div className="text-xs text-slate-400 mt-1 italic">{d.obs}</div>}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-black text-red-500">{formatMoney(d.valor)}</div>
+                          <div className="flex gap-1 mt-1 justify-end">
+                            <button onClick={() => editarDespesa(d)} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"><Edit3 size={13} className="text-slate-500"/></button>
+                            <button onClick={() => setConfirmDel(d.firestoreId)} className="p-1.5 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"><Trash2 size={13} className="text-red-500"/></button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {despesas.length === 0 && (
+              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-slate-100">
+                <ArrowDownCircle size={40} className="text-slate-200 mx-auto mb-3"/>
+                <p className="text-slate-400 font-medium">Nenhuma despesa em {formatMes(mesAtual)}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── DRE ── */}
+        {activeTab === 'dre' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-4 bg-slate-800 text-white">
+                <h2 className="font-black text-lg flex items-center gap-2"><TrendingUp size={20}/> DRE Simplificada</h2>
+                <p className="text-slate-300 text-xs font-medium mt-0.5">{formatMes(mesAtual)}</p>
+              </div>
+
+              {/* RECEITAS */}
+              <div className="p-4 border-b bg-green-50/50">
+                <div className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">Receitas</div>
+                {[...new Set(receitas.map(r => r.origem))].map(origem => {
+                  const tot = receitas.filter(r => r.origem === origem).reduce((a, c) => a + (Number(c.valor) || 0), 0);
+                  return (
+                    <div key={origem} className="flex justify-between py-1.5 text-sm">
+                      <span className="text-slate-600 font-medium">{origem}</span>
+                      <span className="font-bold text-green-700">{formatMoney(tot)}</span>
+                    </div>
+                  );
+                })}
+                {receitas.length === 0 && <p className="text-slate-400 text-sm">Nenhuma receita</p>}
+                <div className="flex justify-between py-2 mt-2 border-t border-green-200 font-black">
+                  <span className="text-slate-700">Total Receitas</span>
+                  <span className="text-green-700 text-lg">{formatMoney(totalReceitas)}</span>
+                </div>
+              </div>
+
+              {/* DESPESAS POR GRUPO */}
+              {GRUPOS_DESPESA.map(g => {
+                const items = despesas.filter(d => d.grupo === g.id);
+                const subtot = items.reduce((a, c) => a + (Number(c.valor) || 0), 0);
+                if (subtot === 0) return null;
+                return (
+                  <div key={g.id} className={`p-4 border-b ${g.bg}`}>
+                    <div className={`text-xs font-black uppercase tracking-wider mb-2 ${g.text}`}>{g.label}</div>
+                    {items.map(d => (
+                      <div key={d.firestoreId} className="flex justify-between py-1 text-sm">
+                        <span className="text-slate-600 font-medium truncate max-w-[60%]">{d.descricao}</span>
+                        <span className="font-bold text-red-600">{formatMoney(d.valor)}</span>
+                      </div>
+                    ))}
+                    <div className={`flex justify-between py-1.5 mt-1 border-t ${g.border} font-black text-sm`}>
+                      <span className={g.text}>Subtotal {g.label}</span>
+                      <span className="text-red-700">{formatMoney(subtot)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* TOTAL DESPESAS */}
+              <div className="p-4 border-b bg-red-50/50">
+                <div className="flex justify-between font-black">
+                  <span className="text-slate-700">Total Despesas</span>
+                  <span className="text-red-600 text-lg">{formatMoney(totalDespesas)}</span>
+                </div>
+              </div>
+
+              {/* RESULTADO */}
+              <div className={`p-5 ${saldo >= 0 ? 'bg-green-600' : 'bg-red-600'}`}>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-white/80 text-xs font-bold uppercase">Resultado do Mês</div>
+                    <div className="text-white font-black text-2xl mt-0.5">{formatMoney(saldo)}</div>
+                  </div>
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${saldo >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                    {saldo >= 0 ? <TrendingUp size={28} className="text-white"/> : <ArrowDownCircle size={28} className="text-white"/>}
+                  </div>
+                </div>
+                {saldo < 0 && (
+                  <div className="mt-3 bg-red-500/30 rounded-xl p-3">
+                    <p className="text-white text-xs font-bold">⚠️ As despesas superaram as receitas em {formatMoney(Math.abs(saldo))} neste mês.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Despesas operacionais vs financeiras */}
+              {(() => {
+                const operacional = despesas.filter(d => !['financeiro','investimento'].includes(d.grupo)).reduce((a,c) => a + (Number(c.valor)||0), 0);
+                const financeiro = despesas.filter(d => d.grupo === 'financeiro').reduce((a,c) => a + (Number(c.valor)||0), 0);
+                const investimento = despesas.filter(d => d.grupo === 'investimento').reduce((a,c) => a + (Number(c.valor)||0), 0);
+                const saldoOp = totalReceitas - operacional;
+                if (financeiro === 0 && investimento === 0) return null;
+                return (
+                  <div className="p-4 bg-slate-50 border-t">
+                    <div className="text-xs font-black text-slate-500 uppercase tracking-wider mb-3">📊 Visão Operacional (sem financeiro/investimento)</div>
+                    <div className="flex justify-between py-1 text-sm">
+                      <span className="text-slate-600">Despesas operacionais</span>
+                      <span className="font-bold text-red-500">{formatMoney(operacional)}</span>
+                    </div>
+                    {financeiro > 0 && <div className="flex justify-between py-1 text-sm">
+                      <span className="text-slate-600">Financeiro (excluído)</span>
+                      <span className="font-bold text-slate-400">- {formatMoney(financeiro)}</span>
+                    </div>}
+                    {investimento > 0 && <div className="flex justify-between py-1 text-sm">
+                      <span className="text-slate-600">Investimentos (excluído)</span>
+                      <span className="font-bold text-slate-400">- {formatMoney(investimento)}</span>
+                    </div>}
+                    <div className={`flex justify-between py-2 mt-2 border-t border-slate-200 font-black ${saldoOp >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                      <span>Resultado Operacional</span>
+                      <span>{formatMoney(saldoOp)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
