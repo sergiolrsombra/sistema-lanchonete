@@ -3700,11 +3700,17 @@ const LivroCaixa = ({ user }) => {
   const receitas = lancamentosMes.filter(l => l.tipo === 'receita');
   const despesas = lancamentosMes.filter(l => l.tipo === 'despesa');
 
+  // Valor total da despesa/receita (para DRE — inclui cartão)
   const calcValorTotal = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0) + (Number(l.cartao)||0) || (Number(l.valor)||0);
 
-  const totalReceitas = receitas.reduce((a, c) => a + calcValorTotal(c), 0);
-  const totalDespesas = despesas.reduce((a, c) => a + calcValorTotal(c), 0);
-  const saldo = totalReceitas - totalDespesas;
+  // Valor que efetivamente SAI DO CAIXA (cartão não conta — é fatura futura)
+  const calcValorCaixa = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0) || (Number(l.valor)||0);
+
+  const totalReceitas = receitas.reduce((a, c) => a + calcValorCaixa(c), 0);
+  const totalDespesasCaixa = despesas.reduce((a, c) => a + calcValorCaixa(c), 0);
+  const totalDespesas = despesas.reduce((a, c) => a + calcValorTotal(c), 0); // para DRE
+  const totalCartaoPendente = despesas.reduce((a, c) => a + (Number(c.cartao)||0), 0);
+  const saldo = totalReceitas - totalDespesasCaixa;
 
   const porGrupo = GRUPOS_DESPESA.map(g => ({
     ...g,
@@ -4065,19 +4071,27 @@ const LivroCaixa = ({ user }) => {
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {/* Cards sumário */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Receitas</div>
+                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Entradas (caixa)</div>
                 <div className="text-xl font-black text-green-600">{formatMoney(totalReceitas)}</div>
               </div>
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Despesas</div>
-                <div className="text-xl font-black text-red-500">{formatMoney(totalDespesas)}</div>
+                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Saídas (caixa)</div>
+                <div className="text-xl font-black text-red-500">{formatMoney(totalDespesasCaixa)}</div>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className={`rounded-2xl p-4 shadow-sm border ${saldo >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="text-xs font-bold text-slate-400 uppercase mb-1">Saldo</div>
+                <div className="text-xs font-bold text-slate-400 uppercase mb-1">💰 Saldo em Caixa</div>
                 <div className={`text-xl font-black ${saldo >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(saldo)}</div>
               </div>
+              {totalCartaoPendente > 0 && (
+                <div className="bg-purple-50 rounded-2xl p-4 shadow-sm border border-purple-200">
+                  <div className="text-xs font-bold text-purple-400 uppercase mb-1">💳 Cartão (fatura)</div>
+                  <div className="text-xl font-black text-purple-700">{formatMoney(totalCartaoPendente)}</div>
+                </div>
+              )}
             </div>
 
             {/* Despesas por grupo */}
@@ -4372,27 +4386,47 @@ const LivroCaixa = ({ user }) => {
               })}
 
               {/* TOTAL DESPESAS */}
-              <div className="p-4 border-b bg-red-50/50">
+              <div className="p-4 border-b bg-red-50/50 space-y-1">
                 <div className="flex justify-between font-black">
-                  <span className="text-slate-700">Total Despesas</span>
+                  <span className="text-slate-700">Total Despesas (DRE)</span>
                   <span className="text-red-600 text-lg">{formatMoney(totalDespesas)}</span>
                 </div>
+                <div className="flex justify-between text-sm text-slate-500">
+                  <span>↳ Saiu do caixa (PIX + Dinheiro)</span>
+                  <span className="font-bold text-red-400">{formatMoney(totalDespesasCaixa)}</span>
+                </div>
+                {totalCartaoPendente > 0 && (
+                  <div className="flex justify-between text-sm text-slate-500">
+                    <span>↳ Cartão (fatura futura)</span>
+                    <span className="font-bold text-purple-500">{formatMoney(totalCartaoPendente)}</span>
+                  </div>
+                )}
               </div>
 
               {/* RESULTADO */}
               <div className={`p-5 ${saldo >= 0 ? 'bg-green-600' : 'bg-red-600'}`}>
                 <div className="flex justify-between items-center">
                   <div>
-                    <div className="text-white/80 text-xs font-bold uppercase">Resultado do Mês</div>
+                    <div className="text-white/80 text-xs font-bold uppercase">💰 Saldo em Caixa</div>
                     <div className="text-white font-black text-2xl mt-0.5">{formatMoney(saldo)}</div>
+                    <div className="text-white/70 text-xs mt-1">(PIX + Dinheiro apenas)</div>
                   </div>
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${saldo >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
                     {saldo >= 0 ? <TrendingUp size={28} className="text-white"/> : <ArrowDownCircle size={28} className="text-white"/>}
                   </div>
                 </div>
+                {totalCartaoPendente > 0 && (
+                  <div className="mt-3 bg-black/20 rounded-xl p-3 flex justify-between items-center">
+                    <div>
+                      <div className="text-white/80 text-xs font-bold uppercase">💳 Fatura pendente</div>
+                      <div className="text-white font-black text-lg">{formatMoney(totalCartaoPendente)}</div>
+                    </div>
+                    <div className="text-white/70 text-xs text-right max-w-[45%]">Não saiu do caixa ainda</div>
+                  </div>
+                )}
                 {saldo < 0 && (
                   <div className="mt-3 bg-red-500/30 rounded-xl p-3">
-                    <p className="text-white text-xs font-bold">⚠️ As despesas superaram as receitas em {formatMoney(Math.abs(saldo))} neste mês.</p>
+                    <p className="text-white text-xs font-bold">⚠️ As saídas de caixa superaram as entradas em {formatMoney(Math.abs(saldo))} neste mês.</p>
                   </div>
                 )}
               </div>
