@@ -3704,7 +3704,7 @@ const LivroCaixa = ({ user }) => {
   const calcValorTotal = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0) + (Number(l.cartao)||0) || (Number(l.valor)||0);
 
   // Valor que efetivamente SAI DO CAIXA (cartão não conta — é fatura futura)
-  const calcValorCaixa = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0) || (Number(l.valor)||0);
+  const calcValorCaixa = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0);
 
   const totalReceitas = receitas.reduce((a, c) => a + calcValorCaixa(c), 0);
   const totalDespesasCaixa = despesas.reduce((a, c) => a + calcValorCaixa(c), 0);
