@@ -3706,7 +3706,7 @@ const LivroCaixa = ({ user }) => {
   // Valor que efetivamente SAI DO CAIXA (cartão não conta — é fatura futura)
   const calcValorCaixa = (l) => (Number(l.pix)||0) + (Number(l.dinheiro)||0);
 
-  const totalReceitas = receitas.reduce((a, c) => a + calcValorCaixa(c), 0);
+  const totalReceitas = receitas.reduce((a, c) => a + calcValorTotal(c), 0); // receitas: cartão também entra (é dinheiro recebido)
   const totalDespesasCaixa = despesas.reduce((a, c) => a + calcValorCaixa(c), 0);
   const totalDespesas = despesas.reduce((a, c) => a + calcValorTotal(c), 0); // para DRE
   const totalCartaoPendente = despesas.reduce((a, c) => a + (Number(c.cartao)||0), 0);
