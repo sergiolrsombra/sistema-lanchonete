@@ -9,7 +9,7 @@ import {
   CheckCircle2, FolderLock, Archive, Banknote, RotateCcw, Landmark, History,
   Clock, ArrowRightLeft, Store, MonitorSmartphone, Cake, CalendarClock, Phone,
   CheckSquare, Printer, Settings, MessageCircle, AlertOctagon, Sparkles, Maximize,
-  Tag
+  Tag, FileText
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
@@ -3840,6 +3840,155 @@ const LivroCaixa = ({ user }) => {
 
   const getGrupoInfo = (id) => GRUPOS_DESPESA.find(g => g.id === id) || GRUPOS_DESPESA[0];
 
+  // GERAR PDF
+  const gerarPDF = () => {
+    const fm = (v) => `R$ ${Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')}`;
+    const fd = (s) => { if(!s) return ''; const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; };
+    const metodos = (l) => {
+      const parts = [];
+      if(Number(l.pix)||0)      parts.push(`PIX: ${fm(l.pix)}`);
+      if(Number(l.dinheiro)||0) parts.push(`Din: ${fm(l.dinheiro)}`);
+      if(Number(l.cartao)||0)   parts.push(`Cart: ${fm(l.cartao)}`);
+      return parts.join(' | ') || fm(l.valor);
+    };
+
+    const recMes   = lancamentosMes.filter(l => l.tipo === 'receita');
+    const despMes  = lancamentosMes.filter(l => l.tipo === 'despesa');
+    const totRec   = recMes.reduce((a,c) => a + calcValorTotal(c), 0);
+    const totDesp  = despMes.reduce((a,c) => a + calcValorTotal(c), 0);
+    const totCaixa = recMes.reduce((a,c) => a + calcValorTotal(c), 0) - despMes.reduce((a,c) => a + calcValorCaixa(c), 0);
+    const totCart  = despMes.reduce((a,c) => a + (Number(c.cartao)||0), 0);
+
+    const rowStyle = 'style="padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:12px;"';
+    const thStyle  = 'style="padding:6px 8px;background:#1e293b;color:#fff;font-size:11px;text-align:left;"';
+
+    const receitasRows = recMes.map(r => `
+      <tr>
+        <td ${rowStyle}>${fd(r.data)}</td>
+        <td ${rowStyle}><b>${r.descricao}</b></td>
+        <td ${rowStyle}>${r.origem||''}</td>
+        <td ${rowStyle}>${metodos(r)}</td>
+        <td ${rowStyle} style="text-align:right;font-weight:bold;color:#16a34a">${fm(calcValorTotal(r))}</td>
+      </tr>`).join('');
+
+    const despesasRows = GRUPOS_DESPESA.map(g => {
+      const items = despMes.filter(d => d.grupo === g.id);
+      if(!items.length) return '';
+      const sub = items.reduce((a,c) => a + calcValorTotal(c), 0);
+      const headerRow = `<tr><td colspan="5" style="padding:8px;background:#f8fafc;font-weight:900;font-size:12px;color:#334155;border-left:4px solid #6366f1;">${g.label} — ${fm(sub)}</td></tr>`;
+      const rows = items.map(d => `
+        <tr>
+          <td ${rowStyle}>${fd(d.data)}</td>
+          <td ${rowStyle}><b>${d.descricao}</b></td>
+          <td ${rowStyle}>${g.label}</td>
+          <td ${rowStyle}>${metodos(d)}</td>
+          <td ${rowStyle} style="text-align:right;font-weight:bold;color:#dc2626">${fm(calcValorTotal(d))}</td>
+        </tr>`).join('');
+      return headerRow + rows;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Livro-Caixa ${formatMes(mesAtual)}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: Arial, sans-serif; color: #1e293b; background:#fff; }
+    @media print {
+      .no-print { display:none; }
+      body { font-size: 11px; }
+    }
+    .header { background: linear-gradient(135deg,#1e293b,#334155); color:#fff; padding:24px 32px; }
+    .header h1 { font-size:22px; font-weight:900; }
+    .header p  { font-size:12px; opacity:.7; margin-top:4px; }
+    .summary { display:flex; gap:12px; padding:20px 32px; background:#f8fafc; flex-wrap:wrap; }
+    .card { flex:1; min-width:140px; background:#fff; border-radius:12px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .card .label { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:4px; }
+    .card .value { font-size:18px; font-weight:900; }
+    .section { padding:20px 32px; }
+    .section h2 { font-size:14px; font-weight:900; color:#334155; margin-bottom:10px; border-bottom:2px solid #e2e8f0; padding-bottom:6px; }
+    table { width:100%; border-collapse:collapse; }
+    th { ${thStyle.replace('style="','')} }
+    .totals { margin:16px 32px; background:#1e293b; color:#fff; border-radius:12px; padding:16px 20px; display:flex; gap:24px; flex-wrap:wrap; }
+    .totals .t { flex:1; min-width:120px; }
+    .totals .t .tl { font-size:10px; opacity:.6; font-weight:700; text-transform:uppercase; }
+    .totals .t .tv { font-size:16px; font-weight:900; margin-top:2px; }
+    .footer { text-align:center; font-size:10px; color:#94a3b8; padding:16px; margin-top:8px; }
+    .btn-print { display:block; margin:16px auto; padding:10px 28px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🏛 Livro-Caixa — ${formatMes(mesAtual)}</h1>
+    <p>Café da Praça · Relatório gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</p>
+  </div>
+
+  <div class="summary">
+    <div class="card"><div class="label">Entradas</div><div class="value" style="color:#16a34a">${fm(totRec)}</div></div>
+    <div class="card"><div class="label">Saídas (caixa)</div><div class="value" style="color:#dc2626">${fm(despMes.reduce((a,c)=>a+calcValorCaixa(c),0))}</div></div>
+    <div class="card"><div class="label">Saldo em Caixa</div><div class="value" style="color:${totCaixa>=0?'#16a34a':'#dc2626'}">${fm(totCaixa)}</div></div>
+    ${totCart > 0 ? `<div class="card"><div class="label">Cartão (fatura)</div><div class="value" style="color:#7c3aed">${fm(totCart)}</div></div>` : ''}
+    <div class="card"><div class="label">Total Despesas</div><div class="value" style="color:#dc2626">${fm(totDesp)}</div></div>
+  </div>
+
+  <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+
+  <!-- RECEITAS -->
+  <div class="section">
+    <h2>📥 Receitas (${recMes.length} lançamentos)</h2>
+    <table>
+      <thead><tr>
+        <th ${thStyle}>Data</th>
+        <th ${thStyle}>Descrição</th>
+        <th ${thStyle}>Origem</th>
+        <th ${thStyle}>Método</th>
+        <th ${thStyle} style="text-align:right">Valor</th>
+      </tr></thead>
+      <tbody>${receitasRows || '<tr><td colspan="5" style="padding:12px;text-align:center;color:#94a3b8;">Nenhuma receita</td></tr>'}</tbody>
+      <tfoot><tr>
+        <td colspan="4" style="padding:8px;font-weight:900;font-size:13px;">Total Receitas</td>
+        <td style="padding:8px;text-align:right;font-weight:900;font-size:14px;color:#16a34a">${fm(totRec)}</td>
+      </tr></tfoot>
+    </table>
+  </div>
+
+  <!-- DESPESAS -->
+  <div class="section">
+    <h2>📤 Despesas (${despMes.length} lançamentos)</h2>
+    <table>
+      <thead><tr>
+        <th ${thStyle}>Data</th>
+        <th ${thStyle}>Descrição</th>
+        <th ${thStyle}>Grupo</th>
+        <th ${thStyle}>Método</th>
+        <th ${thStyle} style="text-align:right">Valor</th>
+      </tr></thead>
+      <tbody>${despesasRows || '<tr><td colspan="5" style="padding:12px;text-align:center;color:#94a3b8;">Nenhuma despesa</td></tr>'}</tbody>
+      <tfoot><tr>
+        <td colspan="4" style="padding:8px;font-weight:900;font-size:13px;">Total Despesas</td>
+        <td style="padding:8px;text-align:right;font-weight:900;font-size:14px;color:#dc2626">${fm(totDesp)}</td>
+      </tr></tfoot>
+    </table>
+  </div>
+
+  <div class="totals">
+    <div class="t"><div class="tl">Entradas</div><div class="tv" style="color:#4ade80">${fm(totRec)}</div></div>
+    <div class="t"><div class="tl">Saídas Caixa</div><div class="tv" style="color:#f87171">${fm(despMes.reduce((a,c)=>a+calcValorCaixa(c),0))}</div></div>
+    <div class="t"><div class="tl">Saldo Caixa</div><div class="tv" style="color:${totCaixa>=0?'#4ade80':'#f87171'}">${fm(totCaixa)}</div></div>
+    ${totCart > 0 ? `<div class="t"><div class="tl">Cartão Pendente</div><div class="tv" style="color:#c4b5fd">${fm(totCart)}</div></div>` : ''}
+  </div>
+
+  <div class="footer">Café da Praça · Sistema PDV · ${formatMes(mesAtual)}</div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url  = URL.createObjectURL(blob);
+    const win  = window.open(url, '_blank');
+    if(win) setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
   // TAG CRUD
   const salvarTag = async () => {
     if (!tagNome.trim()) { showToast('Digite um nome.', 'error'); return; }
@@ -4042,11 +4191,20 @@ const LivroCaixa = ({ user }) => {
             <h1 className="text-xl md:text-2xl font-black text-slate-800 flex items-center gap-2"><Landmark size={26} className="text-indigo-600"/> Livro-Caixa</h1>
             <p className="text-xs text-slate-400 font-medium">Controle financeiro pessoal / empresarial</p>
           </div>
-          {/* Navegação de mês */}
-          <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
-            <button onClick={() => navegarMes(-1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-600"><ChevronLeft size={18}/></button>
-            <span className="font-black text-slate-800 text-sm min-w-[72px] text-center">{formatMes(mesAtual)}</span>
-            <button onClick={() => navegarMes(1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-600"><ChevronRight size={18}/></button>
+          {/* Navegação de mês + PDF */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={gerarPDF}
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl font-bold text-xs shadow-md active:scale-95 transition-all"
+              title="Gerar PDF do mês"
+            >
+              <FileText size={15}/> PDF
+            </button>
+            <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
+              <button onClick={() => navegarMes(-1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-600"><ChevronLeft size={18}/></button>
+              <span className="font-black text-slate-800 text-sm min-w-[72px] text-center">{formatMes(mesAtual)}</span>
+              <button onClick={() => navegarMes(1)} className="p-2 hover:bg-white rounded-lg transition-all text-slate-600"><ChevronRight size={18}/></button>
+            </div>
           </div>
         </div>
         {/* Tabs */}
